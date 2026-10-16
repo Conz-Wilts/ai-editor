@@ -1,0 +1,99 @@
+{
+  "id": "caption_page",
+  "name": "Caption page",
+  "description": "A word-timed karaoke page.",
+  "kind": "template",
+  "entry": "builtin:CaptionPage",
+  "order": 25,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 3,
+  "entrance": null,
+  "floating": true,
+  "moving": false,
+  "contentAspect": null,
+  "fixedBox": true,
+  "boxOk": true,
+  "imageFormat": false,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": false,
+  "wantsPicture": false,
+  "tags": [
+    "captions"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "words": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "start": {
+              "type": "number"
+            },
+            "end": {
+              "type": "number"
+            },
+            "emph": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "text",
+            "start",
+            "end"
+          ]
+        },
+        "minItems": 1
+      },
+      "combine_ms": {
+        "type": "integer",
+        "description": "(1200)"
+      },
+      "style": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": true,
+        "description": "a captions block"
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [
+      "words"
+    ],
+    "additionalProperties": true
+  }
+}

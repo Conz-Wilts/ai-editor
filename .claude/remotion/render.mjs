@@ -20,7 +20,7 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { RenderInternals, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 
@@ -264,5 +264,11 @@ const cmds = { stills, many, bench, local, chunk, bundle: bundleTo, "lambda-esti
 if (!cmds[cmd]) {
   console.error(`usage: node render.mjs ${Object.keys(cmds).join("|")} ...`);
   process.exit(2);
+}
+// The user's own components (<library>/components) into src/ before anything bundles. A renderer copy made before
+// scripts/ was copied alongside it just renders the built-ins.
+if (cmd !== "lambda-estimate") {
+  const gen = path.join(HERE, "scripts", "gen-registry.mjs");
+  if (fs.existsSync(gen)) (await import(pathToFileURL(gen).href)).generate();
 }
 await cmds[cmd](...pos);

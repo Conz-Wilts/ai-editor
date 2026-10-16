@@ -1,0 +1,183 @@
+{
+  "id": "flow",
+  "name": "Flow diagram",
+  "description": "Real logos on node cards, wires that draw, a packet that lands on the word.",
+  "kind": "template",
+  "entry": "builtin:Diagram",
+  "order": 20,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 6,
+  "entrance": null,
+  "floating": true,
+  "moving": true,
+  "contentAspect": 2.4,
+  "fixedBox": false,
+  "boxOk": false,
+  "imageFormat": false,
+  "legacy": true,
+  "scene": true,
+  "splitFirst": false,
+  "wantsPicture": false,
+  "tags": [
+    "diagram",
+    "logo"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "logo": {
+              "type": "string",
+              "description": "a brand name or domain"
+            },
+            "src": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "word": {
+              "type": "string"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "word": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "minItems": 1,
+        "maxItems": 6
+      },
+      "split": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "logo": {
+              "type": "string",
+              "description": "a brand name or domain"
+            },
+            "src": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "word": {
+              "type": "string"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "word": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "minItems": 2,
+        "maxItems": 4
+      },
+      "tasks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "word": {
+              "type": "string"
+            },
+            "heavy": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "text"
+          ]
+        }
+      },
+      "accent": {
+        "type": "string"
+      },
+      "tag": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "at": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": true
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [
+      "nodes"
+    ],
+    "additionalProperties": true
+  }
+}

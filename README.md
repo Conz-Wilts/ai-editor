@@ -16,8 +16,15 @@ It also makes:
 - **A product video from a website.** Paste the URL. It asks what to show, records the real product
   and cuts a launch film with its own music.
 - **A creator teardown.** Paste a profile. You get what makes their videos work, and a style.
+- **AI shots on top of your footage.** With a Higgsfield key, Claude generates b-roll or motion transfer
+  for a moment you pick, shows the price first and only spends when you say yes.
 
-Works on Mac, Windows and Linux.
+Everything happens in **the app**: drop videos into the media bin, see every track on a timeline, move,
+trim and split by hand, and render to YouTube (16:9, 4K), Shorts, TikTok, Reels, 4:5 or 1:1 with each
+platform's safe zones. Claude edits the same timeline: its changes appear live with an Undo button.
+
+Works on Mac, Windows and Linux. Install details: [docs/INSTALL.md](docs/INSTALL.md). How it is built:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Start here
 
@@ -143,17 +150,43 @@ the first option is fine. The answers are saved in `~/.ai-video-editor/profile.j
 
 ## Keys
 
-One optional key, free to start. Add it later by saying **finish setup**.
+Both optional. Add them later by saying **finish setup**.
 
 - **ElevenLabs** transcribes every "um", false start and retake, so the cut is cleaner. Without it,
   Whisper transcribes on your computer, which tidies some of those away.
+- **Higgsfield** (`id:secret`, from console.higgsfield.ai) generates shots on top of your footage. Save it
+  with `python3 .claude/lib/ai_editor/gen/gen.py setkey`.
 
 Never paste a key into the chat. Claude gives you a command that saves it from your own terminal.
 Keys live in `~/.config/creator-teardown/.env`.
 
-## The editor
+## The app
 
-Each video has an editor page. It opens on the cut, then on each render.
+`ai-editor` opens it in your browser.
+
+- **Media bin** (left): drop videos, images and audio anywhere on the window. Long or 4K clips get a
+  light proxy for smooth playback; the render always uses the original.
+- **Player** (centre): the real render engine (Remotion), so what you see is what renders. Tick
+  **Safe zone** to see where each platform's buttons and captions sit.
+- **Timeline** (bottom): Main, B-roll, Generated, Cards, Zooms, Captions, Music and Sound tracks. Drag to
+  move (between tracks too), drag edges to trim, **S** splits at the playhead, **Delete** removes,
+  **Ctrl+Z** / **Ctrl+Shift+Z** undo and redo, **+**/**-** or Ctrl+wheel zoom, snapping on by default.
+- **Inspector** (right): the selected item's settings; a component's settings come from its own schema.
+- **Components**: the motion-graphics library (social posts, browser and terminal captures, chats,
+  logo clusters, progress bars, flows...). Drag one onto the timeline. Add your own in
+  `<library>/components/` (see `.claude/components/authoring.md`).
+- **Format** and **Design**: switch the whole project between formats, and between design systems
+  (colours, type, radius, motion as W3C design tokens; add your own in `<library>/design-systems/`, see
+  `.claude/design-systems/authoring.md`). Your brand kit becomes a design system too.
+- **Ask Claude**: type what you want ("add a zoom when I say launch", "a lower third with my name").
+  Claude's edits arrive live with **Undo**; bigger changes arrive as proposals to Accept or Reject.
+- **Render**: pick formats and where to render (laptop, GitHub Actions, Modal).
+
+The original home page (styles, Your videos, Settings) is one click away under **Home**.
+
+## The review page
+
+Each video also has a review page. It opens on the cut, then on each render.
 
 - **Your video beside its transcript.** The transcript follows playback. Struck words were cut.
 - **Suggested cuts.** Claude marks words it thinks should go. Keep them one by one, or press
@@ -242,6 +275,7 @@ Your styles, skills and settings live in your library folder, not in this repo, 
 | `skill-improver` | "teach my style from this video", "turn my notes into rules", "make this feedback stick" | |
 | `clips` | "clip this video", "make shorts from my podcast" | a long video, a YouTube link, a podcast episode (Apple Podcasts, RSS, YouTube) |
 | `product-video` | "make a launch video for my site" | a website URL |
+| `generate` | "generate b-roll for this part", "make my dance move onto this character" (motion transfer) | a moment on the timeline |
 | `update` | "update the editor", "get the latest version", "sync my fork" | |
 | `improve` | "improve the editor", "process suggestions" (for people working on this repo) | |
 
@@ -259,9 +293,10 @@ published prices, not measured on a bill.
 |---|---|---|
 | Claude | Your Claude plan's usage | Not yet measured per video. |
 | ElevenLabs key (keeps every "um") | Free for a few hours a month | Optional. Without it, Whisper transcribes on your computer for free. |
+| Higgsfield key (AI generation) | Pay as you go, $5 minimum top-up | Optional. Claude shows the price of each generation and asks first; a monthly cap is set in your profile. |
 | Render on your laptop | Free | Often the fastest for a short video. The styled 44.9-second cut of the sample take (1,346 frames) rendered in 35-84 s on a laptop also running other work; `edit.py estimate` was within 25% of the render in 3 of 4 tries. Claude prints the numbers for your video before you pick. |
 | Render on Modal | $0.03 for the 44.9-second sample cut (2.7 min on 3 machines, at Modal's rates). $0.18-0.19 for the whole 3.4-minute sample take rendered uncut (6,167 frames, measured on the bill). About $0.06 for 60 s and $0.54 for 10 min (*estimate*). | The Starter plan includes $30 of free credit a month. The uncut 3.4-minute take took 3.1 min on Modal (4.3 min when the laptop was overloaded during the join) and 6.8 min on a busy laptop. The first render also builds the render machine once (about 2 min). |
-| Render on GitHub Actions | Free | Counts against 2,000 free minutes a month on private repos. The 44-second sample cut took about 7 minutes. |
+| Render on GitHub Actions | Free | Runs in this public repo: GitHub's standard runners are free with no minute limit on public repos. Footage and results are encrypted. A 3-second test render took 1.5 min end to end. |
 | Render on AWS Lambda | A few cents to a few dollars (*estimate*) | Your own AWS account, card needed. Not measured yet. Claude quotes each render first. |
 
 ### Cloud renders
@@ -269,9 +304,12 @@ published prices, not measured on a bill.
 - **Modal** (modal.com): your video is split into pieces that render at once on rented machines,
   then joined on your laptop. Say **set up Modal**; Claude walks you through the free account and
   logs this computer in.
-- **GitHub Actions**: free, no card. Claude packs the renderer and your footage into a **private**
-  repo in your account (it asks first), renders on up to 20 machines and downloads the result. Say
-  **set up GitHub rendering**.
+- **GitHub Actions**: free, no card, in this repo. Your footage is encrypted on your computer before it
+  is uploaded, decrypted only inside GitHub's runners, and the finished video comes back encrypted;
+  the upload and every artifact are deleted afterwards. Renders on up to 20 machines at once. Say
+  **set up GitHub rendering** (it makes the key and stores it as a repo secret). GitHub's terms ask that
+  Actions relate to the repo's software; renders use this repo's own renderer, but if you are unsure,
+  use your laptop or Modal.
 - **AWS Lambda**: many machines at once on your own AWS account. One-time setup of about 20 minutes.
   Say **set up Lambda rendering**.
 
@@ -315,6 +353,13 @@ python3 .claude/skills/setup/scripts/setup.py bootstrap
 Every install gets the same versions: Python packages from a hashed lock file
 (`.claude/requirements/requirements.lock`), Node packages from `package-lock.json`, and
 each model checked against its sha256.
+
+## Licences
+
+This code is MIT licensed ([LICENSE](LICENSE)); bundled third-party code is listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The renderer, [Remotion](https://www.remotion.dev/license),
+is free for individuals and companies of up to 3 people; bigger companies need a Remotion company licence.
+GSAP (animation) is free under its standard licence.
 
 ## Contributing
 

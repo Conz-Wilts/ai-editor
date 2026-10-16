@@ -320,6 +320,31 @@ each step with `status skill-new --step "..."`, and at the end
 `status skill-new --result '{"summary": "Made /<name>. It is on the Skills page."}' --done`. The new skill
 shows on the Skills page, where "Use as a style" makes it a style.
 
+### `JOB render edit=<dir> formats=<id,id|-> target=<laptop|github|modal>`
+
+The user pressed Render in the app (`/app/`, the timeline editor). Pressing it is their approval of that
+timeline: no stills round. `PJ="${CLAUDE_SKILL_DIR}/../style-edit/scripts/project.py"`, `SE` as above.
+
+1. `python3 "$H" status render --step "Exporting the timeline"`, then `python3 "$PJ" export <edit>` with one
+   `--format <id>` per format (`formats=-`: none, which writes plan.json at the project's own size).
+2. Each plan: `python3 "$SE/edit.py" render <edit> --plan plan-<id>.json` (plan.json when no format), adding
+   `--github` for target github (encrypted, on this repo's Actions; `setup.py gh-render-key` first if the doctor
+   says no render key) or `--modal` for modal. Laptop: neither. Report each with
+   `status render --step "Rendering <format>" --progress <0..1>`.
+3. `status render --done --result '{"message": "<where the videos are>", "video": "<first path>"}'`, or
+   `--failed "<one plain sentence>"`.
+
+### `JOB ask edit=<dir> [at=<seconds>] text=<the user's words>`
+
+The user typed into the app's "Ask Claude" box: a change to this edit's timeline, in plain words. `at` is
+where the playhead was ("here", "this bit"). `python3 "$PJ" show <edit> --json` gives the tracks, item ids and
+frames (fps in the doc). Make the change as ops (`references/contracts.md` "project.json" in style-edit) with
+`python3 "$PJ" apply <edit> - --author claude --label "<a few words>"`: the app shows it at once with Undo. A big
+or unsure change goes as `--propose` instead, which the user accepts or rejects in the app. When the words need
+more than the timeline (a new animation: motion; real screenshots or logos: overlays; new footage: generate;
+captions restyled: style-edit), run that skill, then add its result with `apply`. Finish with
+`status ask --done --result '{"message": "<what you changed, one line>"}'`.
+
 ### Connect Modal and Test render (no job for Claude)
 
 The window runs these itself (`setup.py modal-connect` and `modal-test`), as jobs `modal` and `modal-test`

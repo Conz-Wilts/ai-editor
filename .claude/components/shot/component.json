@@ -1,0 +1,171 @@
+{
+  "id": "shot",
+  "name": "Screenshot",
+  "description": "A real capture drops in and the camera pushes into its first mark.",
+  "kind": "overlay",
+  "entry": "builtin:Shot",
+  "order": 1,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 2.5,
+  "entrance": "scale",
+  "floating": true,
+  "moving": false,
+  "contentAspect": null,
+  "fixedBox": false,
+  "boxOk": false,
+  "imageFormat": true,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": false,
+  "wantsPicture": true,
+  "tags": [
+    "capture",
+    "image"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "src": {
+        "type": "string",
+        "description": "an image in the edit folder, e.g. images/capture-1.png"
+      },
+      "size": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        },
+        "minItems": 2,
+        "maxItems": 2,
+        "description": "the image's [width, height] in px"
+      },
+      "marks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "box",
+                "ring",
+                "underline",
+                "bracket",
+                "pill",
+                "dim",
+                "highlight"
+              ]
+            },
+            "rect": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 4,
+              "maxItems": 4,
+              "description": "[x, y, w, h] in image px"
+            },
+            "rects": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "description": "one per line (highlight)"
+            },
+            "label": {
+              "type": "string"
+            },
+            "side": {
+              "enum": [
+                "left",
+                "right"
+              ]
+            },
+            "at": {
+              "type": "number",
+              "description": "seconds after the card lands"
+            },
+            "at_word": {
+              "type": "string",
+              "description": "the word it lands on"
+            },
+            "at_s": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind"
+          ]
+        }
+      },
+      "highlight": {
+        "type": "object",
+        "properties": {
+          "rects": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "description": "fractions of the image, one per line"
+          }
+        },
+        "additionalProperties": true,
+        "description": "the sentence highlighted on the capture"
+      },
+      "label": {
+        "type": "string",
+        "description": "the source's name"
+      },
+      "logo_src": {
+        "type": "string",
+        "description": "the source's logo"
+      },
+      "zoom": {
+        "type": "number",
+        "description": "push-in on the first mark (1.45)"
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [
+      "src"
+    ],
+    "additionalProperties": true
+  }
+}

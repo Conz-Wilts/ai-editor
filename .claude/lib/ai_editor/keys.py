@@ -1,4 +1,4 @@
-"""One key store for both plugins.
+"""One key store for every skill.
 
     from ai_editor import keys
     key, where = keys.get("elevenlabs")        # (None, None) when there is none

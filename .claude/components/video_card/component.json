@@ -1,0 +1,88 @@
+{
+  "id": "video_card",
+  "name": "Video card",
+  "description": "A short real clip (or a motion-skill clip) in a rounded card.",
+  "kind": "overlay",
+  "entry": "builtin:VideoCard",
+  "order": 9,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 2.5,
+  "entrance": "scale",
+  "floating": true,
+  "moving": true,
+  "contentAspect": 1.7777777777777777,
+  "fixedBox": false,
+  "boxOk": false,
+  "imageFormat": false,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": false,
+  "wantsPicture": true,
+  "tags": [
+    "video",
+    "motion"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "src": {
+        "type": "string",
+        "description": "a video in images/"
+      },
+      "size": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        },
+        "minItems": 2,
+        "maxItems": 2,
+        "description": "the image's [width, height] in px"
+      },
+      "start_s": {
+        "type": "number"
+      },
+      "rate": {
+        "type": "number"
+      },
+      "label": {
+        "type": "string"
+      },
+      "bare": {
+        "type": "boolean"
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [
+      "src"
+    ],
+    "additionalProperties": true
+  }
+}

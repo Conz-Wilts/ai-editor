@@ -1,0 +1,107 @@
+{
+  "id": "terminal",
+  "name": "Terminal",
+  "description": "A terminal window: commands type out, output lands.",
+  "kind": "overlay",
+  "entry": "builtin:Terminal",
+  "order": 5,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 2.5,
+  "entrance": "fade",
+  "floating": true,
+  "moving": true,
+  "contentAspect": 1.8,
+  "fixedBox": false,
+  "boxOk": false,
+  "imageFormat": false,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": false,
+  "wantsPicture": false,
+  "tags": [
+    "ui",
+    "code"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string"
+      },
+      "lines": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "cmd",
+                "out"
+              ]
+            },
+            "at": {
+              "type": "number"
+            },
+            "word": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "text"
+          ]
+        },
+        "minItems": 1
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [
+      "lines"
+    ],
+    "additionalProperties": true
+  },
+  "example": {
+    "title": "zsh",
+    "lines": [
+      {
+        "text": "npm run build",
+        "kind": "cmd"
+      },
+      {
+        "text": "built in 2.1 s",
+        "kind": "out"
+      }
+    ]
+  }
+}

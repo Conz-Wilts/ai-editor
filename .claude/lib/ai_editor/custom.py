@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The user's own layer: <library>/custom/. A plugin update replaces the plugin folder, never this one,
+"""The user's own layer: <library>/custom/. An update replaces the editor's own files, never this folder,
 so every change a user makes to how the editor behaves lives here (or in taste.json). Stdlib only.
 
     python3 custom.py path                          print the folder (made, with its README, on first use)

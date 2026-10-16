@@ -43,6 +43,18 @@ READ_BUDGET = {"start": 12000, "cut": 15000, "style-edit": 25000, "product-video
 READ_FIRST = re.compile(r"[Rr]ead \**`([^`]+)`\**:?\s+first")
 
 
+def read_size(f):
+    """Bytes of instructions a reader takes in: the OKF catalog metadata (`type`, and the `title`/`description`
+    frontmatter added to documents that had none) is for navigation, not instructions, so it is not counted."""
+    t = f.read_text(encoding="utf-8").replace("\r\n", "\n")
+    if t.startswith("---\n") and "\n---\n" in t[4:]:
+        head, body = t[4:].split("\n---\n", 1)
+        keep = [ln for ln in head.split("\n") if not ln.startswith(("type:", "title:", "description:"))] \
+            if f.name != "SKILL.md" else [ln for ln in head.split("\n") if not ln.startswith("type:")]
+        t = ("---\n" + "\n".join(keep) + "\n---\n" if keep else "") + body.lstrip("\n")
+    return len(t.encode("utf-8"))
+
+
 def required_reads(skill_md):
     """SKILL.md and the files it marks "read first", resolved against the skill folder."""
     text = skill_md.read_text(encoding="utf-8")
@@ -282,7 +294,7 @@ def main():
     for name, budget in READ_BUDGET.items():
         files = required_reads(ROOT / ".claude/skills" / name / "SKILL.md")
         missing = [str(f) for f in files if not f.exists()]
-        total = sum(f.stat().st_size for f in files if f.exists())
+        total = sum(read_size(f) for f in files if f.exists())
         if missing or total > budget:
             errors.append(f"{name}: required reads {total} bytes (budget {budget}): "
                           + ", ".join(f"{f.name} {f.stat().st_size}" if f.exists() else f"{f} missing" for f in files))
@@ -293,6 +305,26 @@ def main():
         for ln in text_calls_without_utf8(py.read_text(encoding="utf-8")):
             errors.append(f"{py.relative_to(ROOT)}:{ln}: text file read or written without encoding=\"utf-8\" (breaks on Windows)")
     assert text_calls_without_utf8('open("a")\nPath("b").read_text()\nopen("c", "rb")\nopen("d", encoding="utf-8")') == [1, 2]
+
+    # The component library, the design systems and the formats must load (only the built-ins: a user's own
+    # folders are theirs to fix). Their problems() and get() are what plan.py, the app and the renderer read.
+    from ai_editor import components, design, formats
+    errors.extend(f"component {e}" for e in components.problems(dirs=[]))
+    errors.extend(f"design system {e}" for e in design.problems(dirs=[]))
+    for fid in formats.ids():
+        try:
+            formats.get(fid)
+        except Exception as e:   # noqa: BLE001 - any failure is a broken formats.json entry
+            errors.append(f"formats.json {fid}: {e}")
+
+    # No leftover branding from the project this one started from (the licence keeps its copyright line).
+    brand = re.compile(r"next ?work|cooked\.|ai-video-editor-cooked", re.I)
+    for p in ROOT.rglob("*"):
+        if (p.is_file() and p.name not in ("LICENSE", "check_plugins.py") and ".git" not in p.parts
+                and "node_modules" not in p.parts and "dist" not in p.parts
+                and p.suffix in (".md", ".py", ".json", ".ts", ".tsx", ".mjs", ".js", ".html", ".yml", ".sh", ".css")):
+            if brand.search(p.read_text(encoding="utf-8", errors="replace")):
+                errors.append(f"{p.relative_to(ROOT)}: old branding; this project is ai-editor")
 
     for e in errors:
         print("FAIL", e)

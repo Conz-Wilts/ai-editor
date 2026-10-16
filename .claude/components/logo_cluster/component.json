@@ -1,0 +1,109 @@
+{
+  "id": "logo_cluster",
+  "name": "Logo cluster",
+  "description": "Real logos drop in around the head on their words.",
+  "kind": "overlay",
+  "entry": "builtin:LogoCluster",
+  "order": 7,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 2.5,
+  "entrance": "pop",
+  "floating": true,
+  "moving": true,
+  "contentAspect": null,
+  "fixedBox": false,
+  "boxOk": false,
+  "imageFormat": false,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": false,
+  "wantsPicture": false,
+  "tags": [
+    "logo"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "logos": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "src": {
+              "type": "string"
+            },
+            "at": {
+              "type": "number"
+            },
+            "word": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "src"
+          ]
+        },
+        "minItems": 1
+      },
+      "head": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "minItems": 4,
+        "maxItems": 4,
+        "description": "the speaker's head box, % (plan.py fills it)"
+      },
+      "band": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "minItems": 2,
+        "maxItems": 2,
+        "description": "[x0, x1] % of the width (vertical)"
+      },
+      "size": {
+        "type": "number",
+        "description": "each logo, % of the width"
+      },
+      "seed": {
+        "type": "integer"
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [
+      "logos"
+    ],
+    "additionalProperties": true
+  }
+}

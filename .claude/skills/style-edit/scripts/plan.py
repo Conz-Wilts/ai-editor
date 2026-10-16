@@ -49,6 +49,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
 from ai_editor import formats as fmts  # noqa: E402  remotion/src/formats.json: canvas, safe zone, export per format
+from ai_editor import components as comps  # noqa: E402  .claude/components/*/component.json: the component library
+
+# Every component's registry facts (which are overlays, which move, their entrance and content aspect...) come from
+# its manifest, the built-ins and the user's own (<library>/components); components.py demo holds them to the old lists.
+COMPONENTS = comps.tuples()
 
 # The two layout shapes every rule below is written for. Their canvas and zone come from formats.json's
 # "vertical" (9:16) and "youtube" (16:9), which carry exactly the numbers these used to be. A plan made for
@@ -61,9 +66,7 @@ CARD_LEAD_S = 0.1      # a card lands this long before its word
 ENTRANCES = ("pop", "slide", "fade", "scale")
 # Entrance per overlay format, so cards do not all arrive the same way (ai-tells.md "same-entrance"):
 # a capture lifts, a post or a chat slides, a sticker or a logo pops, a terminal fades up.
-FORMAT_ENTRANCE = {"shot": "scale", "browser": "slide", "sticker": "pop", "plain": "scale", "social_post": "slide", "chat": "slide",
-                   "terminal": "fade", "toasts": "slide", "logo_cluster": "pop", "side_by_side": "slide", "video_card": "scale",
-                   "logo": "pop", "logo_sting": "pop", "likes": "pop", "progress": "scale", "curve": "scale", "notes": "slide"}
+FORMAT_ENTRANCE = COMPONENTS["FORMAT_ENTRANCE"]
 # Above the head in a vertical frame, the right side in a wide one.
 DEFAULT_BOX = {"9:16": [10, 15, 74, 20], "16:9": [54, 10, 40, 48]}
 # Where the app's own UI sits, in percent: left, top, right, bottom. Vertical: the
@@ -99,15 +102,14 @@ LOGO_CARD_BOX = (18, 13.1, 64, 18)   # a card edit's logo card on white: centred
 LOGO_BAND, LOGO_SIZE = (17, 83), 20
 INK_MIN_W = 60
 TOP_CARD_MAX_H = {"9:16": 22, "16:9": 80}   # a top card taller than this reaches the head
-SCENES = ("flow",)   # picture scenes: parts land on their own words
+SCENES = COMPONENTS["SCENES"]   # picture scenes: parts land on their own words
 # Every template in remotion/src/Templates.tsx (references/motion.md), plus the two original names that remain.
-TEMPLATES = ("flow", "logo_sting", "social_post", "arrow_callout", "icon_burst", "caption_page")
-# The overlay formats (remotion/src/Overlays.tsx): real pictures floating over the footage. The default.
-OVERLAYS = ("shot", "browser", "sticker", "chat", "terminal", "toasts", "logo_cluster", "side_by_side", "video_card",
-            "likes", "progress", "curve", "notes")
+TEMPLATES = COMPONENTS["TEMPLATES"]
+# The overlay formats (remotion/src/Overlays.tsx, and the user's own): real pictures floating over the footage. The default.
+OVERLAYS = COMPONENTS["OVERLAYS"]
 # The moving ones: a card edit leans on these over static captures (references/shapes.md "Card edit").
-MOVING = ("chat", "terminal", "toasts", "logo_cluster", "side_by_side", "video_card", "likes", "progress", "curve", "notes", "flow")
-FORMATS = ("shot", "browser", "sticker", "plain")    # how an image card is drawn
+MOVING = COMPONENTS["MOVING"]
+FORMATS = COMPONENTS["FORMATS"]    # how an image card is drawn
 # Type cards (words on a ground) were removed from the product (2026-10-06): an old visuals.json naming one
 # is skipped with a pointer to the overlay format that shows the real source instead.
 TYPE_ONLY = ("slam", "title", "counter", "bar_chart", "line_chart", "checklist", "phrase_mark", "keyword", "steps", "race",
@@ -118,15 +120,14 @@ INSTEAD = {"counter": "a capture (sticker) of the page that published the number
            "versus": "side_by_side with the two real screenshots", "lower_third": "the person's real post (post) or page (capture)",
            "pile": "a logo_cluster of the real logos"}
 # Content aspect (width / height) of each overlay, to pick the free region around the head it fills best.
-ASPECT = {"browser": 1.45, "chat": 1.9, "terminal": 1.8, "toasts": 3.2, "social_post": 2.2, "side_by_side": 2.6,
-          "video_card": 16 / 9, "flow": 2.4, "icon_burst": 1.6, "likes": 2.6, "progress": 2.2, "curve": 2.0, "notes": 2.2}
-FIXED_BOX = ("logo", "logo_sting", "arrow_callout", "caption_page")   # keep their own box
-LEGACY = ("logo", "flow")
+ASPECT = COMPONENTS["ASPECT"]
+FIXED_BOX = COMPONENTS["FIXED_BOX"]   # keep their own box
+LEGACY = COMPONENTS["LEGACY"]
 ANIMS = tuple(dict.fromkeys(TEMPLATES + OVERLAYS + LEGACY))
 # Where each card sits (references/motion.md "Layout per template"). "scene": a full-frame cut-away on
 # the look's ground. "split": the split layout's top panel. "box": a card over the footage, only for these.
-BOX_OK = ("logo", "logo_sting", "arrow_callout", "caption_page")
-SPLIT_FIRST = ("icon_burst",)    # scene or split: split keeps the speaker in shot
+BOX_OK = COMPONENTS["BOX_OK"]
+SPLIT_FIRST = COMPONENTS["SPLIT_FIRST"]    # scene or split: split keeps the speaker in shot
 LAYOUTS = ("scene", "split", "box")
 SCENE_BOX = [0, 0, 100, 100]            # "use the scene box" (the renderer's, clear of the app's UI)
 SCENE_TYPE_BOX = {True: [14, 14, 72, 52], False: [6, 9, 88, 70]}   # Scene.tsx sceneBox, vertical / wide: where it draws
@@ -2999,6 +3000,10 @@ def demo_formats():
 
 
 def demo():
+    # the registry tuples come from the component manifests and equal the hand-written ones they replaced
+    built = comps.tuples(comps.load_all(dirs=[]))
+    assert all(built[k] == v for k, v in comps.OLD.items()), [k for k, v in comps.OLD.items() if built[k] != v]
+    assert set(comps.OLD["OVERLAYS"]) <= set(OVERLAYS) and set(comps.OLD["TEMPLATES"]) <= set(TEMPLATES)
     demo_formats()
     # music follows the creator (a bed in half her videos or more) unless the profile or the style page says otherwise
     snd = {"sound": {"music": {"present_pct": 100}}}

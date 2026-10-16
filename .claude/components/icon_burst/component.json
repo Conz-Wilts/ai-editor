@@ -1,0 +1,80 @@
+{
+  "id": "icon_burst",
+  "name": "Icon burst",
+  "description": "The subject springs in and throws flat confetti.",
+  "kind": "template",
+  "entry": "builtin:IconBurst",
+  "order": 24,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 2.5,
+  "entrance": null,
+  "floating": false,
+  "moving": false,
+  "contentAspect": 1.6,
+  "fixedBox": false,
+  "boxOk": false,
+  "imageFormat": false,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": true,
+  "wantsPicture": false,
+  "tags": [
+    "celebration"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "src": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      },
+      "count": {
+        "type": "integer",
+        "description": "confetti pieces (18)"
+      },
+      "seed": {
+        "type": "integer"
+      },
+      "at": {
+        "type": "number"
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [],
+    "additionalProperties": true
+  },
+  "example": {
+    "text": "42",
+    "count": 22
+  }
+}

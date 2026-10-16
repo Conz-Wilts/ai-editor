@@ -16,3 +16,5 @@ eval-results/
 .claude/settings.local.json
 .context/
 .claude/scheduled_tasks.lock
+.claude/app/dist/
+.claude/remotion/src/user-components/

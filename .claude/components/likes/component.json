@@ -1,0 +1,114 @@
+{
+  "id": "likes",
+  "name": "Likes counter",
+  "description": "A like count climbing to the number said, with real comments.",
+  "kind": "overlay",
+  "entry": "builtin:Likes",
+  "order": 10,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 2.5,
+  "entrance": "pop",
+  "floating": true,
+  "moving": true,
+  "contentAspect": 2.6,
+  "fixedBox": false,
+  "boxOk": false,
+  "imageFormat": false,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": false,
+  "wantsPicture": false,
+  "tags": [
+    "social",
+    "number"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "src": {
+        "type": "string",
+        "description": "the platform's logo"
+      },
+      "logo": {
+        "type": "string",
+        "description": "the platform"
+      },
+      "counts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "n": {
+              "type": "number"
+            },
+            "word": {
+              "type": "string"
+            },
+            "at": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "n"
+          ]
+        },
+        "minItems": 1
+      },
+      "comments": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "user": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "word": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "text"
+          ]
+        }
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [
+      "counts"
+    ],
+    "additionalProperties": true
+  }
+}

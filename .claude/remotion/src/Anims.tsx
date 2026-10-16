@@ -3,10 +3,12 @@ import { useTl, Motion } from "./motion";
 import { Fonts, Look, Texture, shadowOf } from "./look";
 import { FLOATING as TYPE_FLOATING, TEMPLATES as TYPE_TEMPLATES } from "./Templates";
 import { OVERLAYS } from "./Overlays";
+import { USER_COMPONENTS, USER_FLOATING } from "./registry.generated";
 
-const TEMPLATES = { ...TYPE_TEMPLATES, ...OVERLAYS };
+// The built-ins, then the user's own components (scripts/gen-registry.mjs); a built-in name always wins.
+const TEMPLATES = { ...USER_COMPONENTS, ...TYPE_TEMPLATES, ...OVERLAYS };
 // Overlay formats draw their own chrome over the footage; they never sit on a surface card.
-const FLOATING = new Set([...TYPE_FLOATING, ...Object.keys(OVERLAYS), "social_post"]);
+const FLOATING = new Set([...TYPE_FLOATING, ...Object.keys(OVERLAYS), "social_post", ...USER_FLOATING]);
 import { CaptionPage } from "./Captions";
 
 // The card host. One idea per card, drawn by a template (Templates.tsx) on the look's surface.

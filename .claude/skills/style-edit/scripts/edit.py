@@ -61,6 +61,7 @@ def sync_renderer(edit=None):
         subprocess.run([sys.executable, str(SETUP), "remotion"], check=True)
         said.done()
     mirror(SRC / "src", REMOTION / "src")
+    mirror(SRC / "scripts", REMOTION / "scripts")   # gen-registry.mjs: render.mjs adds the user's components before bundling
     for f in ("render.mjs", "tsconfig.json"):
         copy_changed(SRC / f, REMOTION / f)
 
@@ -119,6 +120,9 @@ def public_rels(plan):
     rels += [plan["cover"]["src"]] if plan.get("cover") else []   # an audio clip's cover, from clips.py trim
     rels += [plan["layout"]["card"]["src"]] if (plan.get("layout") or {}).get("card") else []   # the letterbox photo
     rels += [t["src"] for b in (plan.get("layout") or {}).get("boards") or [] for t in b["tiles"]]   # the board's logo tiles
+    # the project timeline's other footage (project.py export): main-track clips besides the cut, b-roll, generated
+    rels += [c["src"] for c in plan.get("clips") or [] if c.get("src") and c["src"] != plan.get("video")]
+    rels += [o["src"] for k in ("broll", "generated") for o in plan.get(k) or [] if o.get("src")]
     return list(dict.fromkeys(rels))
 
 

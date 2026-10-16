@@ -201,9 +201,9 @@ def main(argv=None):
     lib = library.path(make=not dry)
     url = home.running()
     if url:
-        print(f"Opening your editor...\n  Already open at {url.split('?')[0]}")
+        print(f"Opening your editor...\n  Already open at {home.app_url(url).split('?')[0]}")
         if not dry:
-            webbrowser.open(url)
+            webbrowser.open(home.app_url(url))
         if not window_only:
             st, text = ("listening" if home.listening() else "opened", "") if dry else connect(lib)
             print("  " + CONNECTED.get(st, f"Run this in a new Terminal window so Claude picks up your jobs:\n  {text}"))
@@ -287,7 +287,7 @@ def demo():
         o = io.StringIO()
         with contextlib.redirect_stdout(o):
             assert main(["--window-only"]) == 0   # Claude's side is checked below, with the terminal faked
-        assert opened == ["http://127.0.0.1:47821/?t=x"] and "Already open at http://127.0.0.1:47821/" in o.getvalue()
+        assert opened == ["http://127.0.0.1:47821/app/?t=x"] and "Already open at http://127.0.0.1:47821/app/" in o.getvalue(),             "the editor app opens (the home page stays at /)"
         assert "t=x" not in o.getvalue(), "the token is not printed"
     finally:
         home.running, webbrowser.open = real

@@ -1,0 +1,119 @@
+{
+  "id": "chat",
+  "name": "Chat thread",
+  "description": "An app's thread rebuilt from its real parts: the reply types out.",
+  "kind": "overlay",
+  "entry": "builtin:Chat",
+  "order": 4,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 2.5,
+  "entrance": "slide",
+  "floating": true,
+  "moving": true,
+  "contentAspect": 1.9,
+  "fixedBox": false,
+  "boxOk": false,
+  "imageFormat": false,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": false,
+  "wantsPicture": false,
+  "tags": [
+    "ui",
+    "ai"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "app": {
+        "type": "string",
+        "description": "the app's name"
+      },
+      "logo": {
+        "type": [
+          "object",
+          "string"
+        ]
+      },
+      "model": {
+        "type": "string"
+      },
+      "messages": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "enum": [
+                "user",
+                "app"
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "at": {
+              "type": "number"
+            },
+            "word": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "from",
+            "text"
+          ]
+        },
+        "minItems": 1
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [
+      "app",
+      "messages"
+    ],
+    "additionalProperties": true
+  },
+  "example": {
+    "app": "Assistant",
+    "messages": [
+      {
+        "from": "user",
+        "text": "Summarise this video"
+      },
+      {
+        "from": "app",
+        "text": "Three points, in order."
+      }
+    ]
+  }
+}

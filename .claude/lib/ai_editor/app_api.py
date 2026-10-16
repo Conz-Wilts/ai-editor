@@ -11,6 +11,9 @@ here after its token-cookie check (and, for POST, its same-origin check). Stdlib
     POST /api/proposal/accept?edit=  {id}      POST /api/proposal/reject?edit=  {id}
     GET  /api/file?edit=&p=<path in the edit>  any file inside the edit folder, with byte ranges (206)
 
+    GET  /api/components, /api/components/preview?id=, /api/design-systems, /api/design-systems/look?id=
+                                               the component gallery and design systems (catalog_api.py)
+
 `edit` is the edit folder's path (or its name); only folders library.edit_dirs() knows are served.
 
     python3 app_api.py demo
@@ -89,6 +92,9 @@ def events(d, since, known=None, wait=WAIT_S):
 
 def route(h, method, path, q, body=None):
     """Handle one /api/ request with h (the home handler: h.send(code, obj)). False when the path is not ours."""
+    if path.startswith(("/api/components", "/api/design-systems")):   # the gallery and the design-system picker
+        import catalog_api
+        return catalog_api.route(h, method, path, q)
     if path == "/api/projects" and method == "GET":
         out = []
         for d in allowed():

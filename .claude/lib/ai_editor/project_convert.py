@@ -164,13 +164,32 @@ def _format(format_id):
         return None
 
 
+def _design_look(sid):
+    """The compiled Look of design system `sid` (design.py), or None (unset, unknown or broken: the plan's own look)."""
+    if not sid:
+        return None
+    try:
+        from ai_editor import design
+    except ImportError:
+        try:
+            import design
+        except ImportError:
+            return None
+    try:
+        return design.compile(sid)
+    except Exception:   # noqa: BLE001  a broken user system never stops an export
+        return None
+
+
 def to_plan(doc, format_id=None):
     fps = doc["fps"]
     fmt = _format(format_id or doc.get("format"))
     present = list(doc.get("planExtras", {}).get("_present", []))
     plan = {k: copy.deepcopy(v) for k, v in doc.get("planExtras", {}).items() if k != "_present"}
     by = {t["role"]: t for t in doc["tracks"]}
-    get = lambda r: [it for it in by[r]["items"]] if r in by else []
+    # a hidden track exports nothing (the main track stays: it is the footage); a muted one plays silent
+    get = lambda r: [it for it in by[r]["items"]] if r in by and (r == "main" or not by[r].get("hidden")) else []
+    muted = lambda r: bool(by.get(r, {}).get("muted"))
 
     def has(key, items):
         return key in present or bool(items)
@@ -178,16 +197,20 @@ def to_plan(doc, format_id=None):
     if main:
         first = main[0]
         plan["video"] = doc["assets"].get(first.get("asset"), {}).get("src", first.get("src"))
-        if len(main) > 1 or first["from"] or first.get("trimIn"):
+        if len(main) > 1 or first["from"] or first.get("trimIn") or first.get("fit") not in (None, "cover") or muted("main"):
             plan["clips"] = [{"src": doc["assets"].get(it.get("asset"), {}).get("src", it.get("src")), "from": it["from"],
                               "durationInFrames": it["durationInFrames"], "trimIn": it.get("trimIn", 0),
-                              **({"volume": it["volume"]} if "volume" in it else {}),
-                              **({"fit": it["fit"]} if "fit" in it else {})} for it in main]
+                              **({"volume": 0} if muted("main") else {"volume": it["volume"]} if "volume" in it else {}),
+                              **({"fit": it["fit"]} if "fit" in it else {}),
+                              **({"reframe": it["reframe"]} if it.get("reframe") else {})} for it in main]
     plan["width"], plan["height"] = (fmt["width"], fmt["height"]) if fmt else (doc["width"], doc["height"])
     if fmt:   # formats.for_plan / plan_safe_pct read it: the safe zone of this platform, not just the shape
         plan["format"] = format_id or doc.get("format")
     plan["fps"] = fps
     plan["durationInFrames"] = ps.derive_duration(doc)
+    look = _design_look(doc.get("designSystem"))
+    if look:   # the project's design system wins over the plan's own look (planExtras.look, copied above)
+        plan["look"] = look
     ct = by.get("captions", {})
     caps = get("captions")
     if "_raw" in (ct.get("props") or {}):
@@ -239,12 +262,14 @@ def to_plan(doc, format_id=None):
                 c["trigger_word"] = word
             out.append(c)
         plan["cards"] = out
-    sx = get("sfx")
+    sx = [] if muted("sfx") else get("sfx")
     if has("sfx", sx):
         plan["sfx"] = [{**copy.deepcopy(it.get("props") or {}), "t": _sec(it, fps, "start"),
                         **({"src": it["src"]} if "src" in it else {})} for it in sx]
-    mt, ms = by.get("music", {}), get("music")
-    if "_raw" in (mt.get("props") or {}):
+    mt, ms = by.get("music", {}), [] if muted("music") else get("music")
+    if muted("music") or mt.get("hidden"):
+        plan.pop("music", None)
+    elif "_raw" in (mt.get("props") or {}):
         plan["music"] = copy.deepcopy(mt["props"]["_raw"])
     elif ms:
         m = ms[0]
@@ -255,7 +280,8 @@ def to_plan(doc, format_id=None):
             plan[r] = [{"src": doc["assets"].get(it.get("asset"), {}).get("src", it.get("src")),
                         "start": _sec(it, fps, "start"), "end": _sec(it, fps, "end"), "trimIn": it.get("trimIn", 0),
                         **({"box": _box_out(it["box"], doc, fmt)} if "box" in it else {}),
-                        **({"props": it["props"]} if "props" in it else {})} for it in its]
+                        **({"props": {**(it.get("props") or {}), "volume": 0}} if muted(r)
+                           else {"props": it["props"]} if "props" in it else {})} for it in its]
     return plan
 
 
@@ -464,6 +490,25 @@ def demo():
         (d / "plan.json").write_text(json.dumps(sample_plan()), encoding="utf-8")   # plan.py ran again
         after = sync(d)
         assert len(ps.track(after, "cards")["items"]) == n, "the user's sticker kept, nothing doubled"
+    # a design system's compiled Look replaces the plan's own; an unknown one leaves the plan's look alone
+    import design
+    ds = from_plan(sample_plan(), "ds")
+    ds["designSystem"] = "editorial-dark"
+    assert to_plan(ds)["look"] == design.compile("editorial-dark")
+    ds["designSystem"] = "no-such-system"
+    assert to_plan(ds)["look"] == sample_plan()["look"]
+    # updateTrack's flags reach the render: a hidden track exports nothing, a muted one plays silent
+    hm = from_plan(sample_plan(), "hm")
+    tr = {t["role"]: t for t in hm["tracks"]}
+    base = to_plan(hm)
+    tr["cards"]["hidden"] = tr["zooms"]["hidden"] = True
+    tr["main"]["muted"] = tr["music"]["muted"] = tr["sfx"]["muted"] = True
+    out = to_plan(hm)
+    assert out["cards"] == [] and out["zooms"] == [] and out["captions"] == base["captions"], out["cards"]
+    assert out["clips"] and all(c["volume"] == 0 for c in out["clips"]) and out["video"] == base["video"]
+    assert "music" not in out and not out.get("sfx"), (out.get("music"), out.get("sfx"))
+    tr["main"]["hidden"] = True
+    assert to_plan(hm)["video"] == base["video"], "the main track is the footage: hiding it keeps it"
     print("demo ok")
 
 

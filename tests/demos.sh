@@ -12,8 +12,9 @@ for s in "$T/fetch.py demo" "$T/editplan.py demo" "$T/visual.py demo" "$T/graphi
   "$T/report.py demo" "$T/match.py demo" "$T/format_check.py demo" "$T/look.py demo" "$T/lookpass.py demo" "$T/parallel.py demo" "$T/_progress.py demo" \
   "$A/cut/scripts/test_build_timeline.py" "$A/cut/scripts/test_retakes.py" "$A/cut/scripts/test_media.py" "$A/cut/scripts/verify_cut.py demo" "$A/cut/scripts/hook_check.py demo" "$A/cut/scripts/join.py demo" \
   "$A/cut/scripts/judge_cut.py demo" "$A/cut/scripts/read_cut.py demo" "$A/cut/scripts/transcribe.py demo" "$A/cut/scripts/trend.py demo" "$A/cut/scripts/splice_check.py demo" "$A/cut/scripts/script_match.py demo" "$A/cut/scripts/mirror.py demo" \
-  "$L/keys.py" "$L/gen/gen.py demo" "$L/okf.py demo" "$L/ghrender.py demo" ".github/scripts/chunks.py demo" "$L/formats.py demo" "$L/net.py demo" "$L/progress.py demo" "$L/profile.py demo" "$L/links.py demo" "$L/lock.py demo" "$L/models.py" "$L/run.py demo" "$L/review.py demo" "$L/styleskill.py demo" "$L/skillrules.py demo" "$A/skill-maker/scripts/skill_maker.py demo" "$L/home.py demo" "$L/askhook.py demo" "$L/assets.py demo" "$L/library.py demo" "$L/thumbs.py demo" "$L/custom.py demo" "$L/presets.py demo" "$L/launcher.py demo" "$L/live.py demo" \
+  "$L/keys.py" "$L/gen/gen.py demo" "$L/okf.py demo" "$L/ghrender.py demo" ".github/scripts/chunks.py demo" "$L/formats.py demo" "$L/components.py demo" "$L/design.py demo" "$L/catalog_api.py demo" "$L/net.py demo" "$L/progress.py demo" "$L/profile.py demo" "$L/links.py demo" "$L/lock.py demo" "$L/models.py" "$L/run.py demo" "$L/review.py demo" "$L/styleskill.py demo" "$L/skillrules.py demo" "$A/skill-maker/scripts/skill_maker.py demo" "$L/home.py demo" "$L/askhook.py demo" "$L/assets.py demo" "$L/library.py demo" "$L/thumbs.py demo" "$L/custom.py demo" "$L/presets.py demo" "$L/launcher.py demo" "$L/live.py demo" \
   "$L/fslock.py demo" "$L/httpfile.py demo" "$L/project_schema.py demo" "$L/project_convert.py demo" "$L/project_store.py demo" "$L/app_api.py demo" "$A/style-edit/scripts/project.py demo" \
+  "$L/app_render.py demo" "$L/reframe.py demo" "tests/check_ops.py" \
   "$A/style-edit/scripts/plan.py demo" "$A/style-edit/scripts/edit.py demo" "$A/style-edit/scripts/export_nle.py demo" "$A/style-edit/scripts/chapters.py demo" "$A/style-edit/scripts/source.py demo" \
   "$A/style-edit/scripts/matte.py demo" "$A/clips/scripts/clips.py demo" "$A/setup/scripts/setup.py demo" \
   "$A/taste/scripts/taste.py demo" "$A/taste/scripts/learn.py demo" "$A/style-edit/scripts/face.py demo" "$A/style-edit/scripts/check.py demo" \
@@ -33,6 +34,10 @@ echo "== motion/scripts/verify.mjs demo"
 node "$A/motion/scripts/verify.mjs" demo || failed+=("verify.mjs demo")
 echo "== tests/test_alerts.mjs"
 node tests/test_alerts.mjs || failed+=("tests/test_alerts.mjs")
+echo "== tests/test_ops.mjs (the app's ops.ts = project_store.py)"
+node tests/test_ops.mjs || failed+=("tests/test_ops.mjs")
+echo "== tests/test_app.mjs (the app in headless Chrome)"
+node tests/test_app.mjs || failed+=("tests/test_app.mjs")
 echo "== tests/test_record.mjs"
 node tests/test_record.mjs || failed+=("tests/test_record.mjs")
 if ((${#failed[@]})); then printf 'FAILED: %s\n' "${failed[@]}"; exit 1; fi

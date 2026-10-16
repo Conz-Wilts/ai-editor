@@ -1,0 +1,34 @@
+{
+  "id": "quote_badge",
+  "name": "Quote badge",
+  "description": "A short quote on a rounded badge that drops in and leaves upward. A sample user component for the tests.",
+  "kind": "overlay",
+  "entry": "./index.tsx",
+  "order": 100,
+  "aspects": ["9:16", "16:9"],
+  "defaultDurationS": 2.5,
+  "entrance": "pop",
+  "floating": true,
+  "moving": false,
+  "contentAspect": 3.0,
+  "fixedBox": false,
+  "boxOk": false,
+  "imageFormat": false,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": false,
+  "wantsPicture": false,
+  "tags": ["quote", "sample"],
+  "preview": null,
+  "example": {"text": "Ship it today", "tone": "accent"},
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "text": {"type": "string", "description": "the words on the badge, as said"},
+      "tone": {"enum": ["ink", "accent"], "description": "the badge colour from the design system (ink)"}
+    },
+    "required": ["text"],
+    "additionalProperties": true
+  }
+}

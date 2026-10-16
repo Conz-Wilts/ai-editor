@@ -1,0 +1,2890 @@
+{
+ "about": "project_store.apply_op cases: tests/check_ops.py (Python) and tests/test_ops.mjs (the app's ops.ts) both pass them",
+ "base": {
+  "schema": "ai-editor/project@1",
+  "id": "prj_aaaaaaaa",
+  "name": "t",
+  "rev": 3,
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "durationInFrames": 300,
+  "format": "vertical",
+  "formats": [
+   "vertical"
+  ],
+  "designSystem": null,
+  "assets": {
+   "ast_cut": {
+    "kind": "video",
+    "src": "cut.mp4",
+    "origin": "cut"
+   }
+  },
+  "tracks": [
+   {
+    "id": "trk_main",
+    "kind": "video",
+    "role": "main",
+    "name": "Main",
+    "muted": false,
+    "hidden": false,
+    "locked": false,
+    "items": [
+     {
+      "id": "itm_a1",
+      "type": "video",
+      "asset": "ast_cut",
+      "from": 0,
+      "durationInFrames": 300,
+      "trimIn": 0,
+      "origin": "plan",
+      "pinned": false
+     }
+    ]
+   },
+   {
+    "id": "trk_broll",
+    "kind": "video",
+    "role": "broll",
+    "name": "Broll",
+    "muted": false,
+    "hidden": false,
+    "locked": false,
+    "items": []
+   },
+   {
+    "id": "trk_cards",
+    "kind": "overlay",
+    "role": "cards",
+    "name": "Cards",
+    "muted": false,
+    "hidden": false,
+    "locked": false,
+    "items": [
+     {
+      "id": "itm_c1",
+      "type": "card",
+      "from": 60,
+      "durationInFrames": 45,
+      "component": "chat",
+      "props": {
+       "title": "Hi",
+       "list": [
+        1
+       ]
+      },
+      "box": {
+       "units": "frame",
+       "x": 10,
+       "y": 12,
+       "w": 80,
+       "h": 40
+      },
+      "anchor": {
+       "word": "notion",
+       "t": 2.0
+      },
+      "sec": {
+       "start": 2.0,
+       "end": 3.5
+      },
+      "origin": "plan",
+      "pinned": false
+     }
+    ]
+   },
+   {
+    "id": "trk_lock",
+    "kind": "audio",
+    "role": "music",
+    "name": "Music",
+    "muted": false,
+    "hidden": false,
+    "locked": true,
+    "items": []
+   }
+  ],
+  "planExtras": {},
+  "source": {
+   "plan": "plan.json"
+  }
+ },
+ "cases": [
+  {
+   "name": "move within its track",
+   "author": "user",
+   "ops": [
+    {
+     "op": "move",
+     "id": "itm_c1",
+     "from": 90
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 90,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": true
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "move to another track by role",
+   "author": "user",
+   "ops": [
+    {
+     "op": "move",
+     "id": "itm_c1",
+     "from": 10,
+     "track": "broll"
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 10,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": true
+        }
+       ]
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "trim start moves trimIn",
+   "author": "user",
+   "ops": [
+    {
+     "op": "trim",
+     "id": "itm_a1",
+     "edge": "start",
+     "to": 30
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 30,
+         "durationInFrames": 270,
+         "trimIn": 30,
+         "origin": "plan",
+         "pinned": true
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "trim start of an item without trimIn",
+   "author": "user",
+   "ops": [
+    {
+     "op": "trim",
+     "id": "itm_c1",
+     "edge": "start",
+     "to": 70
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 70,
+         "durationInFrames": 35,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": true
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "trim end",
+   "author": "user",
+   "ops": [
+    {
+     "op": "trim",
+     "id": "itm_a1",
+     "edge": "end",
+     "to": 240
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 240,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 240,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": true
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "trim start past the end",
+   "author": "user",
+   "ops": [
+    {
+     "op": "trim",
+     "id": "itm_c1",
+     "edge": "start",
+     "to": 105
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "trim start before the first source frame",
+   "author": "user",
+   "ops": [
+    {
+     "op": "trim",
+     "id": "itm_c1",
+     "edge": "start",
+     "to": 70
+    },
+    {
+     "op": "trim",
+     "id": "itm_a1",
+     "edge": "start",
+     "to": 0
+    },
+    {
+     "op": "move",
+     "id": "itm_a1",
+     "from": 5
+    },
+    {
+     "op": "trim",
+     "id": "itm_a1",
+     "edge": "start",
+     "to": 1
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "trim with a bad edge",
+   "author": "user",
+   "ops": [
+    {
+     "op": "trim",
+     "id": "itm_a1",
+     "edge": "middle",
+     "to": 10
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "split keeps trim, anchor and drops sec",
+   "author": "user",
+   "ops": [
+    {
+     "op": "split",
+     "id": "itm_c1",
+     "at": 75,
+     "newId": "itm_c2"
+    },
+    {
+     "op": "split",
+     "id": "itm_a1",
+     "at": 150,
+     "newId": "itm_a2"
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 150,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": true
+        },
+        {
+         "id": "itm_a2",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 150,
+         "durationInFrames": 150,
+         "trimIn": 150,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 15,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": true
+        },
+        {
+         "id": "itm_c2",
+         "type": "card",
+         "from": 75,
+         "durationInFrames": 30,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "split outside the item",
+   "author": "user",
+   "ops": [
+    {
+     "op": "split",
+     "id": "itm_c1",
+     "at": 60,
+     "newId": "itm_c2"
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "delete",
+   "author": "user",
+   "ops": [
+    {
+     "op": "delete",
+     "id": "itm_c1"
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "delete a missing item",
+   "author": "user",
+   "ops": [
+    {
+     "op": "delete",
+     "id": "itm_zz"
+    }
+   ],
+   "expect": {
+    "error": "conflict"
+   }
+  },
+  {
+   "name": "update nested set and unset pins a plan item",
+   "author": "claude",
+   "ops": [
+    {
+     "op": "update",
+     "id": "itm_c1",
+     "set": {
+      "props.title": "Hello",
+      "box.w": 70,
+      "props.list.x": 1,
+      "entrance": "slide"
+     },
+     "unset": [
+      "props.nope",
+      "sec"
+     ]
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hello",
+          "list": {
+           "x": 1
+          }
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 70,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "origin": "plan",
+         "pinned": true,
+         "entrance": "slide"
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "update a plan item as plan does not pin",
+   "author": "plan",
+   "ops": [
+    {
+     "op": "update",
+     "id": "itm_c1",
+     "set": {
+      "props.title": "x"
+     }
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "x",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "update the id",
+   "author": "user",
+   "ops": [
+    {
+     "op": "update",
+     "id": "itm_c1",
+     "set": {
+      "id": "itm_x"
+     }
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "add with defaults",
+   "author": "user",
+   "ops": [
+    {
+     "op": "add",
+     "track": "trk_broll",
+     "id": "itm_b1",
+     "item": {
+      "type": "image",
+      "src": "images/a.png",
+      "durationInFrames": 30
+     }
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "type": "image",
+         "src": "images/a.png",
+         "durationInFrames": 30,
+         "id": "itm_b1",
+         "origin": "user",
+         "pinned": true,
+         "from": 0
+        }
+       ]
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "add as plan at an index",
+   "author": "plan",
+   "ops": [
+    {
+     "op": "add",
+     "track": "cards",
+     "index": 0,
+     "item": {
+      "id": "itm_c0",
+      "type": "card",
+      "from": 5,
+      "durationInFrames": 9
+     }
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c0",
+         "type": "card",
+         "from": 5,
+         "durationInFrames": 9,
+         "origin": "plan",
+         "pinned": false
+        },
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "add a duplicate id",
+   "author": "user",
+   "ops": [
+    {
+     "op": "add",
+     "track": "cards",
+     "item": {
+      "id": "itm_c1",
+      "type": "card",
+      "from": 0,
+      "durationInFrames": 9
+     }
+    }
+   ],
+   "expect": {
+    "error": "conflict"
+   }
+  },
+  {
+   "name": "add to a locked track",
+   "author": "user",
+   "ops": [
+    {
+     "op": "add",
+     "track": "music",
+     "item": {
+      "id": "itm_m1",
+      "type": "audio",
+      "from": 0,
+      "durationInFrames": 9
+     }
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "add to a missing track",
+   "author": "user",
+   "ops": [
+    {
+     "op": "add",
+     "track": "trk_nope",
+     "item": {
+      "id": "itm_q",
+      "type": "card",
+      "durationInFrames": 9
+     }
+    }
+   ],
+   "expect": {
+    "error": "conflict"
+   }
+  },
+  {
+   "name": "addTrack then deleteTrack",
+   "author": "user",
+   "ops": [
+    {
+     "op": "addTrack",
+     "track": {
+      "id": "trk_g",
+      "role": "generated",
+      "name": "Gen"
+     }
+    },
+    {
+     "op": "addTrack",
+     "track": {
+      "id": "trk_x",
+      "role": "broll"
+     },
+     "index": 1
+    },
+    {
+     "op": "deleteTrack",
+     "id": "trk_x"
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      },
+      {
+       "id": "trk_g",
+       "kind": "video",
+       "role": "generated",
+       "name": "Gen",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "setProject",
+   "author": "user",
+   "ops": [
+    {
+     "op": "setProject",
+     "set": {
+      "format": "youtube",
+      "width": 1920,
+      "height": 1080,
+      "designSystem": "neutral"
+     },
+     "unset": [
+      "formats"
+     ]
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1920,
+     "height": 1080,
+     "durationInFrames": 300,
+     "format": "youtube",
+     "designSystem": "neutral",
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "setProject a key it cannot set",
+   "author": "user",
+   "ops": [
+    {
+     "op": "setProject",
+     "set": {
+      "rev": 9
+     }
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "addAsset then add an item on it",
+   "author": "user",
+   "ops": [
+    {
+     "op": "addAsset",
+     "id": "ast_b",
+     "asset": {
+      "kind": "video",
+      "src": "media/b.mp4",
+      "origin": "upload",
+      "id": "ignored"
+     }
+    },
+    {
+     "op": "add",
+     "track": "main",
+     "id": "itm_a9",
+     "item": {
+      "type": "video",
+      "asset": "ast_b",
+      "from": 300,
+      "durationInFrames": 60,
+      "trimIn": 0
+     }
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 360,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      },
+      "ast_b": {
+       "kind": "video",
+       "src": "media/b.mp4",
+       "origin": "upload"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        },
+        {
+         "type": "video",
+         "asset": "ast_b",
+         "from": 300,
+         "durationInFrames": 60,
+         "trimIn": 0,
+         "id": "itm_a9",
+         "origin": "user",
+         "pinned": true
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "deleteAsset still on the timeline",
+   "author": "user",
+   "ops": [
+    {
+     "op": "deleteAsset",
+     "id": "ast_cut"
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "deleteAsset missing",
+   "author": "user",
+   "ops": [
+    {
+     "op": "deleteAsset",
+     "id": "ast_nope"
+    }
+   ],
+   "expect": {
+    "error": "conflict"
+   }
+  },
+  {
+   "name": "replace puts an item back",
+   "author": "user",
+   "ops": [
+    {
+     "op": "replace",
+     "id": "itm_c1",
+     "track": "trk_broll",
+     "index": 0,
+     "item": {
+      "id": "itm_c1",
+      "type": "card",
+      "from": 1,
+      "durationInFrames": 2,
+      "origin": "user",
+      "pinned": true
+     }
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 1,
+         "durationInFrames": 2,
+         "origin": "user",
+         "pinned": true
+        }
+       ]
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "move to a negative frame",
+   "author": "user",
+   "ops": [
+    {
+     "op": "move",
+     "id": "itm_c1",
+     "from": -1
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "unknown op",
+   "author": "user",
+   "ops": [
+    {
+     "op": "explode"
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "hidden main track is not the length",
+   "author": "user",
+   "ops": [
+    {
+     "op": "split",
+     "id": "itm_a1",
+     "at": 100,
+     "newId": "itm_a3"
+    },
+    {
+     "op": "delete",
+     "id": "itm_a3"
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 100,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 100,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": true
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "updateTrack mutes and hides",
+   "author": "user",
+   "ops": [
+    {
+     "op": "updateTrack",
+     "id": "trk_broll",
+     "set": {
+      "muted": true,
+      "hidden": true
+     }
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": true,
+       "hidden": true,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "updateTrack renames",
+   "author": "user",
+   "ops": [
+    {
+     "op": "updateTrack",
+     "id": "trk_cards",
+     "set": {
+      "name": "Graphics"
+     }
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Graphics",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 60,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "updateTrack unlocks a locked track, then an edit applies",
+   "author": "user",
+   "ops": [
+    {
+     "op": "updateTrack",
+     "id": "trk_cards",
+     "set": {
+      "locked": true
+     }
+    },
+    {
+     "op": "updateTrack",
+     "id": "trk_cards",
+     "set": {
+      "locked": false
+     }
+    },
+    {
+     "op": "move",
+     "id": "itm_c1",
+     "from": 75
+    }
+   ],
+   "expect": {
+    "doc": {
+     "schema": "ai-editor/project@1",
+     "id": "prj_aaaaaaaa",
+     "name": "t",
+     "rev": 3,
+     "fps": 30,
+     "width": 1080,
+     "height": 1920,
+     "durationInFrames": 300,
+     "format": "vertical",
+     "formats": [
+      "vertical"
+     ],
+     "designSystem": null,
+     "assets": {
+      "ast_cut": {
+       "kind": "video",
+       "src": "cut.mp4",
+       "origin": "cut"
+      }
+     },
+     "tracks": [
+      {
+       "id": "trk_main",
+       "kind": "video",
+       "role": "main",
+       "name": "Main",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_a1",
+         "type": "video",
+         "asset": "ast_cut",
+         "from": 0,
+         "durationInFrames": 300,
+         "trimIn": 0,
+         "origin": "plan",
+         "pinned": false
+        }
+       ]
+      },
+      {
+       "id": "trk_broll",
+       "kind": "video",
+       "role": "broll",
+       "name": "Broll",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": []
+      },
+      {
+       "id": "trk_cards",
+       "kind": "overlay",
+       "role": "cards",
+       "name": "Cards",
+       "muted": false,
+       "hidden": false,
+       "locked": false,
+       "items": [
+        {
+         "id": "itm_c1",
+         "type": "card",
+         "from": 75,
+         "durationInFrames": 45,
+         "component": "chat",
+         "props": {
+          "title": "Hi",
+          "list": [
+           1
+          ]
+         },
+         "box": {
+          "units": "frame",
+          "x": 10,
+          "y": 12,
+          "w": 80,
+          "h": 40
+         },
+         "anchor": {
+          "word": "notion",
+          "t": 2.0
+         },
+         "sec": {
+          "start": 2.0,
+          "end": 3.5
+         },
+         "origin": "plan",
+         "pinned": true
+        }
+       ]
+      },
+      {
+       "id": "trk_lock",
+       "kind": "audio",
+       "role": "music",
+       "name": "Music",
+       "muted": false,
+       "hidden": false,
+       "locked": true,
+       "items": []
+      }
+     ],
+     "planExtras": {},
+     "source": {
+      "plan": "plan.json"
+     }
+    }
+   }
+  },
+  {
+   "name": "a locked track refuses an item edit",
+   "author": "user",
+   "ops": [
+    {
+     "op": "updateTrack",
+     "id": "trk_cards",
+     "set": {
+      "locked": true
+     }
+    },
+    {
+     "op": "move",
+     "id": "itm_c1",
+     "from": 75
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "updateTrack refuses other keys",
+   "author": "user",
+   "ops": [
+    {
+     "op": "updateTrack",
+     "id": "trk_broll",
+     "set": {
+      "role": "music"
+     }
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "updateTrack refuses a non-boolean",
+   "author": "user",
+   "ops": [
+    {
+     "op": "updateTrack",
+     "id": "trk_broll",
+     "set": {
+      "muted": 1
+     }
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "updateTrack refuses an empty name",
+   "author": "user",
+   "ops": [
+    {
+     "op": "updateTrack",
+     "id": "trk_broll",
+     "set": {
+      "name": " "
+     }
+    }
+   ],
+   "expect": {
+    "error": "bad"
+   }
+  },
+  {
+   "name": "updateTrack on a missing track",
+   "author": "user",
+   "ops": [
+    {
+     "op": "updateTrack",
+     "id": "trk_nope",
+     "set": {
+      "muted": true
+     }
+    }
+   ],
+   "expect": {
+    "error": "conflict"
+   }
+  }
+ ]
+}

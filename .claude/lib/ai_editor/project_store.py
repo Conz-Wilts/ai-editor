@@ -12,6 +12,7 @@ Batch: {"baseRev": 17, "author": "user|claude|plan", "label": "Move launch card"
     {"op": "delete", "id"}
     {"op": "update", "id", "set": {"props.label": "x", "box.w": 80}, "unset": ["props.old"]}
     {"op": "addTrack", "track": {"role", "name"?, ...}, "index"?}      {"op": "deleteTrack", "id"}
+    {"op": "updateTrack", "id", "set": {"muted"?: bool, "hidden"?: bool, "locked"?: bool, "name"?: str}}
     {"op": "setProject", "set": {"format": "youtube", "designSystem": "brand", "name", "formats", "width", "height"}}
     {"op": "addAsset", "asset": {...}, "id"?}                           {"op": "deleteAsset", "id"}
     {"op": "replace", "id", "item", "track", "index"}                    (undo's own: puts an item back as it was)
@@ -20,7 +21,7 @@ Rules:
 - A batch based on an older rev is rebased when every id it names still exists, else Conflict (HTTP 409).
 - The whole batch applies or nothing does; the result must pass project_schema.validate.
 - A user or claude edit to a plan item pins it, so plan.py running again never moves it back.
-- A locked track refuses user and claude edits.
+- A locked track refuses user and claude edits to its items; updateTrack still applies, so it can be unlocked.
 - project.log.jsonl gets {rev, author, label, ops, inverse, ts, undoOf?, redoOf?, proposal?}; undo applies an
   entry's inverse as a new rev; redo applies the undo's inverse. Each author has their own undo stack.
 - "propose": true writes proposals/<id>.json instead; accept applies it, reject deletes it.
@@ -43,6 +44,7 @@ import project_schema as ps  # noqa: E402
 CHANGED = threading.Condition()   # notified after every write in this process (the app's long-poll wakes on it)
 PROJECT_KEYS = ("name", "format", "formats", "designSystem", "width", "height")
 EDITS = ("move", "trim", "split", "update")
+TRACK_KEYS = {"muted": bool, "hidden": bool, "locked": bool, "name": str}   # what updateTrack may set
 
 
 class Conflict(Exception):
@@ -277,6 +279,22 @@ def apply_op(doc, op, author):
             raise Conflict(f"no track {op.get('id')}", doc["rev"])
         t = doc["tracks"].pop(i)
         return [{"op": "addTrack", "track": t, "index": i}]
+    if kind == "updateTrack":
+        t = next((x for x in doc["tracks"] if x["id"] == op.get("id")), None)
+        if t is None:
+            raise Conflict(f"no track {op.get('id')}", doc["rev"])
+        sets = op.get("set") or {}
+        if not isinstance(sets, dict) or not sets:
+            raise BadBatch("updateTrack needs a set")
+        undo_set = {}
+        for k, v in sets.items():
+            if k not in TRACK_KEYS:
+                raise BadBatch(f"updateTrack cannot set {k}")
+            if not isinstance(v, TRACK_KEYS[k]) or (k == "name" and not v.strip()):
+                raise BadBatch(f"track {k} must be {'a non-empty string' if k == 'name' else 'true or false'}")
+            undo_set[k] = t.get(k, False if k != "name" else t.get("name", ""))
+            t[k] = v
+        return [{"op": "updateTrack", "id": t["id"], "set": undo_set}]
     if kind == "setProject":
         undo_set, undo_unset = {}, []
         for k, v in (op.get("set") or {}).items():
@@ -311,6 +329,8 @@ def named(op):
     """The item / track ids an op needs to exist (the rebase check)."""
     k = op.get("op")
     if k in EDITS or k == "delete":
+        return [op.get("id")]
+    if k == "updateTrack":
         return [op.get("id")]
     return []
 
@@ -513,6 +533,18 @@ def demo():
             raise AssertionError("locked")
         except BadBatch:
             pass
+        # updateTrack still applies on a locked track: unlock, edit, undo the unlock
+        zid = ps.track(load(d), "zooms")["id"]
+        doc = apply(d, {"author": "user", "ops": [{"op": "updateTrack", "id": zid, "set": {"locked": False, "muted": True}}]})["doc"]
+        assert ps.track(doc, "zooms")["locked"] is False and ps.track(doc, "zooms")["muted"] is True
+        for bad in ({"color": "red"}, {"hidden": "yes"}, {"name": "  "}, {}):
+            try:
+                apply(d, {"author": "user", "ops": [{"op": "updateTrack", "id": zid, "set": bad}]})
+                raise AssertionError(bad)
+            except BadBatch:
+                pass
+        doc = undo(d, "user")
+        assert ps.track(doc, "zooms")["locked"] is True and ps.track(doc, "zooms")["muted"] is False
         # two writers at once: no lost revision
         start = load(d)["rev"]
         cap = ps.track(load(d), "captions")["items"][0]["id"]

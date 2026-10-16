@@ -2,10 +2,14 @@
 // ~/.ai-video-editor/remotion/preview/ and runs it there, so it uses the renderer's own node_modules
 // and the same src/ the render does. Output: dist/app.js.
 import * as esbuild from "esbuild";
+import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+// the user's own components into ../src first (the renderer's scripts/gen-registry.mjs), when that copy has it
+const gen = path.join(here, "..", "scripts", "gen-registry.mjs");
+if (fs.existsSync(gen)) (await import(pathToFileURL(gen).href)).generate({ src: path.join(here, "..", "src") });
 await esbuild.build({
   entryPoints: [path.join(here, "app.tsx")],
   outfile: path.join(here, "dist", "app.js"),

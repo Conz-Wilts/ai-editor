@@ -97,7 +97,7 @@ SETUP = Path(__file__).resolve().parents[2] / "skills" / "setup" / "scripts" / "
 TRANSCRIBE = Path(__file__).resolve().parents[2] / "skills" / "cut" / "scripts" / "transcribe.py"
 EDIT_PY = Path(__file__).resolve().parents[2] / "skills" / "style-edit" / "scripts" / "edit.py"
 BEAT_S = 6
-JOBS = ("teardown", "skill", "video", "modal", "modal-test", "setup", "style-change", "skill-change", "skill-new")
+JOBS = ("teardown", "skill", "video", "modal", "modal-test", "setup", "style-change", "skill-change", "skill-new", "render", "ask")
 TAKE = ("captions", "pace", "graphics", "sound")          # the page's parts; editplan.py --take names
 # The page's "graphics" box is her visuals as a whole: what she shows, how it moves in and where it sits.
 EDITPLAN_PARTS = {"graphics": ("graphics", "entrances", "layout")}
@@ -1569,6 +1569,10 @@ def job_line(j, root):
         return f"JOB skill-change {a['skill']} path={a['path']} text={a['text']}"
     if j["type"] == "skill-new":
         return "JOB skill-new" + (f" text={a['text']}" if a.get("text") else "")
+    if j["type"] == "render":   # the app's Render: project.py export, then edit.py render (start's references/home.md)
+        return f"JOB render edit={a['edit']} formats={','.join(a.get('formats') or []) or '-'} target={a['target']}"
+    if j["type"] == "ask":   # the app's Ask Claude box: an edit to the timeline in plain words (project.py apply)
+        return f"JOB ask edit={a['edit']}" + (f" at={a['at']}" if "at" in a else "") + f" text={a['text']}"
     if j["type"] == "style-change":
         return f"JOB style-change {'my-style' if a['style'] == 'mine' else a['style']}" + \
             (f" style={a['path']}" if a.get("path") else "") + f" text={a['text']}"
@@ -1901,6 +1905,11 @@ def make_handler(token):
             path = unquote(urlsplit(self.path).path)
             if askhook.route(self, "GET", path, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}):   # Claude's questions
                 return
+            if path == "/app" or path.startswith(("/app/", "/api/media/")) or path in ("/api/plan", "/api/formats"):   # the app: app_render.py
+                import app_render
+                q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query, keep_blank_values=True).items()}
+                if app_render.route(self, "GET", path, q, home=sys.modules[__name__]):
+                    return
             if path.startswith("/api/"):   # the app's projects: app_api.py
                 import app_api
                 q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query, keep_blank_values=True).items()}
@@ -2074,6 +2083,10 @@ def make_handler(token):
             if path in ("/upload", "/style/cover"):
                 with live.busy():   # no live-reload restart under an upload
                     return self.upload() if path == "/upload" else self.cover()
+            if path == "/api/upload":   # the app's asset bin: a file into the edit's media/ (app_render.py)
+                import app_render
+                with live.busy():
+                    return app_render.upload(self, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()})
             try:
                 cap = askhook.MAX_BODY if path in ("/ask/answer", "/job") else 1 << 20   # an answer or a new video can carry images
                 body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
@@ -2081,6 +2094,11 @@ def make_handler(token):
                 return self.send(400, {"error": "not json"})
             if askhook.route(self, "POST", path, {}, body):
                 return
+            if path in ("/api/new", "/api/reframe"):   # the app's new project and reframe: app_render.py
+                import app_render
+                q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query, keep_blank_values=True).items()}
+                if app_render.route(self, "POST", path, q, body, home=sys.modules[__name__]):
+                    return
             if path.startswith("/api/"):   # the app's commands: app_api.py (same token and same-origin checks as above)
                 import app_api
                 q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query, keep_blank_values=True).items()}
@@ -2475,10 +2493,26 @@ def make_handler(token):
                 args = {"skill": n, "path": str(md), "text": text}
             elif kind == "skill-new":   # Skills, "Make a new skill": skill-maker, step by step with the user
                 args = {"text": re.sub(r"\s+", " ", str(b.get("text") or "")).strip()[:2000]}
+            elif kind in ("render", "ask"):   # the app: render the timeline (formats x target), or ask Claude to edit it
+                e = Path(str(b.get("edit") or "")).resolve() if b.get("edit") else None
+                if e is None or e not in library.edit_dirs():
+                    return self.send(400, {"error": "no such edit in the library"})
+                if kind == "render":
+                    import formats as fmts
+                    known = set(fmts.ids())
+                    want = [f for f in b.get("formats") or [] if f in known][:6]
+                    target = b.get("target") if b.get("target") in ("laptop", "github", "modal") else "laptop"
+                    args = {"edit": str(e), "formats": want, "target": target}
+                else:
+                    text = re.sub(r"\s+", " ", str(b.get("text") or "")).strip()[:2000]
+                    if not text:
+                        return self.send(400, {"error": "Say what to change."})
+                    args = {"edit": str(e), "text": text,
+                            **({"at": round(float(b["at"]), 2)} if isinstance(b.get("at"), (int, float)) else {})}
             else:
                 return self.send(400, {"error": "unknown job"})
             j = update(lambda d: queue(d, kind, args))
-            if kind in ("style-change", "skill-change", "skill-new"):   # typed in a chat box: a Claude opens for it
+            if kind in ("style-change", "skill-change", "skill-new", "render", "ask"):   # a Claude opens for it
                 claude_unless_idle(j["id"])
             return self.send(200, {"id": j["id"], "handle": j["args"].get("handle")})
 
@@ -2783,6 +2817,11 @@ def review_url(d):
     return line if line.startswith("http") else None
 
 
+def app_url(url):
+    """The editor app (.claude/app, served at /app/) for a home URL: what the browser opens. The home page stays at /."""
+    return url.replace("/?t=", "/app/?t=", 1) if os.environ.get("AI_EDITOR_OPEN", "app") == "app" else url
+
+
 def running():
     try:
         url = (home() / ".server").read_text(encoding="utf-8").strip()
@@ -2838,7 +2877,7 @@ def serve(root=None, port=None, open_browser=True):
     url = running()
     if url:
         if open_browser:
-            webbrowser.open(url)
+            webbrowser.open(app_url(url))
         return None, url
     token = stable_token()
     srv = bind(make_handler(token), port)
@@ -2850,7 +2889,7 @@ def serve(root=None, port=None, open_browser=True):
     askhook.register(srv, url, "home", asks_for, asks_dir)
     threading.Thread(target=run_doctor, daemon=True).start()
     if open_browser:
-        webbrowser.open(url)
+        webbrowser.open(app_url(url))
     return srv, url
 
 

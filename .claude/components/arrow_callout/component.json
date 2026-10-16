@@ -1,0 +1,88 @@
+{
+  "id": "arrow_callout",
+  "name": "Arrow callout",
+  "description": "A label pill pops and a hand-drawn arrow draws to a point.",
+  "kind": "template",
+  "entry": "builtin:ArrowCallout",
+  "order": 23,
+  "aspects": [
+    "9:16",
+    "16:9"
+  ],
+  "defaultDurationS": 2.5,
+  "entrance": null,
+  "floating": true,
+  "moving": false,
+  "contentAspect": null,
+  "fixedBox": true,
+  "boxOk": true,
+  "imageFormat": false,
+  "legacy": false,
+  "scene": false,
+  "splitFirst": false,
+  "wantsPicture": false,
+  "tags": [
+    "pointer"
+  ],
+  "preview": null,
+  "propsSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string"
+      },
+      "point": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "minItems": 2,
+        "maxItems": 2,
+        "description": "[fx, fy] fractions of the card box"
+      },
+      "side": {
+        "enum": [
+          "auto",
+          "left",
+          "right"
+        ]
+      },
+      "word_at": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "seconds after the card lands when its word is said (plan.py fills it)"
+      },
+      "enter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured entrance (plan.py fills it)"
+      },
+      "exit": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "the creator's measured exit (plan.py fills it)"
+      },
+      "ambient": {
+        "description": "the camera's slow push and drift (plan.py fills it)"
+      }
+    },
+    "required": [
+      "label"
+    ],
+    "additionalProperties": true
+  },
+  "example": {
+    "label": "this setting",
+    "point": [
+      0.72,
+      0.3
+    ]
+  }
+}

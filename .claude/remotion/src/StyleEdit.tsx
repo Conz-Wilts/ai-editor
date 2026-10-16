@@ -4,7 +4,6 @@ import {
   CalculateMetadataFunction,
   Easing,
   Img,
-  OffthreadVideo,
   Sequence,
   continueRender,
   delayRender,
@@ -26,6 +25,7 @@ import { SceneCard, SceneView, TR_S, Transition, footageX, phases, sceneBox, sce
 import { captionFade, groundCovers } from "./ground";
 import { Ground, onGround } from "./look";
 import { BoardFrame, BoardLayout } from "./Board";
+import { Clip, Footage, Overlay, Overlays } from "./Footage";
 
 // Shapes follow skills/style-edit/references/contracts.md "plan.json". Times are seconds on the cut's timeline.
 // origin: the top centre of the head over the zoom, % of the frame (plan.py from face.json): the face holds its place, the hair never rises into a card.
@@ -95,7 +95,13 @@ export type Plan = {
   cover?: Cover;
   texts?: TextItem[]; // a card edit's title pill, running numbered list and X stamp (Texts.tsx)
   grade?: { brightness: number; saturate: number }; // the creator's grade: burned into the footage copy (edit.py footage_filter), drawn here on the cutouts
+  clips?: Clip[]; // the project timeline's main track when it holds more than one clip or a trimmed one (Footage.tsx)
+  broll?: Overlay[]; // the timeline's b-roll track (seconds)
+  generated?: Overlay[]; // the timeline's generated track (Higgsfield clips, seconds)
+  sfx?: { t: number; src: string }[]; // sound cues (Sfx.tsx)
+  music?: { src: string }; // the music bed (Sfx.tsx)
 };
+const NO_CAPTIONS: Plan["captions"] = { style: {}, chunks: [] };
 // An audio-only clip (clips.py trim): the show's cover over a blurred, dimmed copy of itself. box: % of the frame.
 // push: the cover's scale at the end; ground_push: the ground's scale at the start (it eases back to 1 as the
 // cover grows); pulses: sentence starts, each a small punch.
@@ -329,26 +335,28 @@ const sceneCaptions = (style: CaptionStyle, chunks: Chunk[], cards: Card[], t: n
 };
 
 /** The letterbox layout: plain on purpose (no zoom, no card styling), the title and the photo hard on and off. */
-const LetterboxView: React.FC<Letterbox & { video: string; captions: Plan["captions"]; t: number; m: Motion; font: string | null }> = (
-  { title, title_box, title_px, card, video, captions, t, m, font }) => {
+const LetterboxView: React.FC<Letterbox & { video: string; clips?: Clip[]; overlays?: Overlay[]; captions: Plan["captions"]; t: number;
+  m: Motion; font: string | null; sound: React.ReactNode }> = ({ title, title_box, title_px, card, video, clips, overlays, captions, t, m, font, sound }) => {
   const { height } = useVideoConfig();
   const at = (b: number[]): React.CSSProperties => ({ position: "absolute", left: `${b[0]}%`, top: `${b[1]}%`, width: `${b[2]}%`, height: `${b[3]}%` });
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
       {/* the render proxy already is the cut in its band on black (edit.py footage_filter) */}
-      {video ? <OffthreadVideo src={staticFile(video)} style={{ width: "100%", height: "100%" }} /> : null}
+      <Footage video={video} clips={clips} />
+      <Overlays items={overlays} />
       {card && t < card.to ? <Img src={staticFile(card.src)} style={{ ...at(card.box), objectFit: "cover", objectPosition: "50% 40%" }} /> : null}
       {font ? <div style={{ ...at(title_box), display: "flex", flexDirection: "column", justifyContent: "flex-end", overflow: "hidden" }}>
         <div style={{ fontFamily: font, fontWeight: 400, fontSize: (title_px / 1920) * height, lineHeight: 1.1, color: "#fff",
           textAlign: "center", textWrap: "balance" } as React.CSSProperties}>{title}</div>
       </div> : null}
       <Captions style={captions.style} chunks={captions.chunks} t={t} m={m} />
-      <Sfx />
+      {sound}
     </AbsoluteFill>
   );
 };
 
-export const StyleEdit: React.FC<Plan> = ({ video, captions, zooms, cards, layout, look: lookIn, motion, cutouts, pans, cover, texts, grade }) => {
+export const StyleEdit: React.FC<Plan> = ({ video, captions = NO_CAPTIONS, zooms = [], cards = [], layout, look: lookIn, motion, cutouts, pans,
+  cover, texts, grade, clips, broll, generated, sfx, music }) => {
   const frame = useCurrentFrame();
   const { fps, width, height, durationInFrames } = useVideoConfig();
   const t = frame / fps;
@@ -357,7 +365,10 @@ export const StyleEdit: React.FC<Plan> = ({ video, captions, zooms, cards, layou
   const fonts = useFonts(look);
   const split = layout?.mode === "split";
   const graded: React.CSSProperties = grade ? { filter: `brightness(${grade.brightness}) saturate(${grade.saturate})` } : {};
-  if (layout?.mode === "letterbox") return <LetterboxView {...layout} video={video} captions={captions} t={t} m={m} font={fonts.ready ? fonts.body : null} />;
+  const overlays = [...(broll ?? []), ...(generated ?? [])];
+  const sound = <Sfx sfx={sfx} music={music} />;
+  if (layout?.mode === "letterbox") return <LetterboxView {...layout} video={video} clips={clips} overlays={overlays} captions={captions} t={t}
+    m={m} font={fonts.ready ? fonts.body : null} sound={sound} />;
   if (layout?.mode === "board") {
     // the canvas and the speaker are drawn by Board.tsx; the cards left in the plan are its overlays on the speaker
     const over = fonts.ready ? slots(cards, false).filter((s) => t >= s.from && t < s.to) : [];
@@ -370,7 +381,8 @@ export const StyleEdit: React.FC<Plan> = ({ video, captions, zooms, cards, layou
               covered={false} light={false} look={look} m={m} fonts={fonts} />
           ))}
         </BoardFrame>
-        <Sfx />
+        <Overlays items={overlays} />
+        {sound}
       </AbsoluteFill>
     );
   }
@@ -397,8 +409,9 @@ export const StyleEdit: React.FC<Plan> = ({ video, captions, zooms, cards, layou
     return (
       <AbsoluteFill style={{ backgroundColor: "#000" }}>
         <AbsoluteFill style={cam}>
-          {video ? <OffthreadVideo src={staticFile(video)} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+          <Footage video={video} clips={clips} style={{ objectFit: "cover" }} />
         </AbsoluteFill>
+        <Overlays items={overlays} />
         {cover ? <CoverView c={cover} t={t} dur={durationInFrames / fps} m={m} width={width} height={height} /> : null}
         {behindViews}
         {/* the speaker over the behind cards, on the footage's own move, only while one is up */}
@@ -413,7 +426,7 @@ export const StyleEdit: React.FC<Plan> = ({ video, captions, zooms, cards, layou
         {sceneViews}
         {texts?.length ? <Texts items={texts} t={t} width={width} height={height} font={captions.style.font_match} /> : null}
         <AbsoluteFill style={{ opacity: capFade }}><Captions style={capStyle} chunks={captions.chunks} t={t} m={m} /></AbsoluteFill>
-        <Sfx />
+        {sound}
       </AbsoluteFill>
     );
   }
@@ -434,9 +447,10 @@ export const StyleEdit: React.FC<Plan> = ({ video, captions, zooms, cards, layou
         borderRadius: `${r}px ${r}px 0 0`, boxShadow: o > 0 ? `0 ${-height * 0.004}px ${height * 0.02}px rgba(0,0,0,${0.12 * o})` : undefined }}>
         <div style={{ position: "absolute", left: -(x / 100) * width * o, top: -(y / 100) * height * o, width: width * k,
           height: height * k, transform: `translateX(${footageX(t, cards, width, m)}px) scale(${zoomScale(t, zooms)})`, transformOrigin: `${origin[0]}% ${origin[1]}%` }}>
-          {video ? <OffthreadVideo src={staticFile(video)} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+          <Footage video={video} clips={clips} style={{ objectFit: "cover" }} />
         </div>
       </div>
+      <Overlays items={overlays} />
       {layout.variant === "cutout" ? (() => {
         // the same frames, cut out (matte.py), in a window that starts `breakout` higher: the head rises out of the card
         const c = (cutouts ?? []).find((k) => frame >= k.from && frame <= k.to);
@@ -454,7 +468,7 @@ export const StyleEdit: React.FC<Plan> = ({ video, captions, zooms, cards, layou
       <AbsoluteFill style={{ opacity: capFade }}>
         <Captions style={{ ...capStyle, y_pct: sceneUp(cards, t) ? layout.caption_full_y : capY }} chunks={captions.chunks} t={t} m={m} />
       </AbsoluteFill>
-      <Sfx />
+      {sound}
     </AbsoluteFill>
   );
 };

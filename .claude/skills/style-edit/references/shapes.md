@@ -73,6 +73,13 @@ it out, check.py plan FAILs it): `notes` and `progress` carry the take's frames 
 the user's own app screenshots cropped to about 2:1; a big `logo`. No sticker. Plus `title` (at the open),
 `cta` (on the ask), `list`, `stamp` beats (`visuals.md` "Card edit").
 
+## Components
+
+Every `anim` type above is a component: `.claude/components/<id>/component.json` holds its props schema and how
+plan.py places it (`lib/ai_editor/components.py`). A user's own components (`<library>/components/<id>/`) are
+named the same way, `{"kind": "anim", "type": "<id>", "props": {...}}`; check props with
+`components.py props <id> '<json>'`. How to write one: `.claude/components/authoring.md`.
+
 ## Rules (plan.py enforces them and warns)
 
 - Only the speaker's words and real names. Never invent a figure, quote, like count or date.

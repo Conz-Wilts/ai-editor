@@ -264,10 +264,18 @@ Times are integer frames at `fps`; ids (`itm_`, `trk_`, `ast_`, 8 base32 letters
   beside `video`; broll and generated tracks export `broll` / `generated` lists (seconds).
 
 Edits are op batches (`lib/ai_editor/project_store.py`): `add | move | trim | split | delete | update | addTrack |
-deleteTrack | setProject | addAsset | deleteAsset`, applied whole or not at all, each logged with its inverse in
+deleteTrack | updateTrack | setProject | addAsset | deleteAsset`, applied whole or not at all, each logged with its inverse in
 `project.log.jsonl` (undo / redo per author). A batch on an older `baseRev` is rebased when every id it names
 still exists, else refused (409). `propose` writes `proposals/<id>.json` for the user to accept or reject in the app.
 `project.export.json` holds the sha256 of each plan file `export` wrote, so `sync` skips its own output.
+- `updateTrack`: `{"op": "updateTrack", "id": "trk_x", "set": {"muted"?: bool, "hidden"?: bool, "locked"?: bool,
+  "name"?: str}}`, those keys only. A locked track refuses edits to its items, but updateTrack still applies (that
+  is how it unlocks). On export a hidden track's items are left out (the main track stays: it is the footage), and
+  a muted track plays silent: main clips get `volume: 0`, broll/generated `props.volume: 0`, music and sfx are dropped.
+- `designSystem`: a design system id (`.claude/design-systems/<id>/tokens.json` or `<library>/design-systems/`);
+  `export` writes its compiled Look (`lib/ai_editor/design.py compile`) as plan.json `look`, over the plan's own.
+  Card `component` ids come from the component library (`.claude/components/<id>/component.json`, plus
+  `<library>/components/`): `.claude/components/authoring.md`.
 
 ## plan.json (style-edit -> Remotion)
 
