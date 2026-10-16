@@ -1,0 +1,239 @@
+---
+type: Skill
+name: creator-teardown
+description: Reverse-engineers a short-form creator's video format from their real numbers. Pulls a TikTok or YouTube Shorts profile (or pasted links, Instagram reels too) with view, like and save counts, transcribes the top videos word for word, measures pace, pauses and fillers, maps each video into timed beats, and writes a teardown.md someone can film from, a teardown.html page of their graphics, motion and sound, and the style.json the style-edit skill edits from (on its own it can write an edit plan as a table and .srt). Use when the user wants to analyse, break down or study a creator ("analyse @handle", "tear down @handle", "teardown of @handle", "break down this creator", "what makes this creator's videos work"), pastes TikTok, YouTube or Instagram links and asks what the pattern is, or asks to set up creator-teardown. Not for editing the user's own video like a creator (that is start), not for researching a topic, and not for cutting raw footage.
+license: MIT
+compatibility: Python 3.9+, ffmpeg, yt-dlp and internet access. Optional ElevenLabs key for verbatim transcripts. Mac, Windows or Linux.
+---
+
+# Creator Teardown
+
+Paths: `${CLAUDE_SKILL_DIR}` means the folder containing this SKILL.md. On Windows, use `py` wherever
+these commands say `python3`.
+
+Every question to the user goes in the question box: call the AskUserQuestion tool (2-4 options, the recommended one first). Only in an agent without that tool, ask numbered questions in text.
+
+## Output
+
+`creator-teardowns/<handle>/`: `teardown.md` (the analysis), `teardown.html` (the page the user looks
+at), `look.md` (what Claude reads), `style.json` (every measured number, for editing in this style),
+plus the per-video files listed in `${CLAUDE_SKILL_DIR}/references/outputs.md`. An edit plan goes to
+`edit-plans/<name>/`. Whether an edit in this style matches: `scripts/match.py` (`references/outputs.md` "Match check").
+
+## First: doctor
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/fetch.py" doctor
+```
+
+Run it before the first teardown in a session. `Ready.` means go. If it prints `Not ready`, or the user asks to install or set up
+the skill, follow `${CLAUDE_SKILL_DIR}/references/setup.md`. The ElevenLabs key is optional.
+Never ask for it in the chat: the user saves it with `setkey` in their own terminal.
+
+`VPY="${CLAUDE_SKILL_DIR}/scripts/run.py"`; `python3 "$VPY"` below (`py` on Windows) runs a script with
+the tool venv's Python wherever `AI_EDITOR_HOME` puts it.
+
+## Pipeline
+
+### Quick mode (called by ai-editor's start, setup or style-edit)
+
+When another skill needs only the style.json, run exactly: Step 1 `list`, Step 2's commands with
+`--top 5` (5 plus 2 control and 2 spares; pasted links: all), Step 3b's four, then Step 3c's four, then stop. The Step 0 parts question only if the caller
+has not asked it. Skip `metrics.py`, the Step 3 written passes and Steps 4-6. About 3 minutes per creator
+on a 14-core Mac (2-3 min measured; the spares add about 1 min at worst), twice that on an 8-core laptop. Say so first.
+
+### Step 0: Ask, once
+
+Skip what the message already answers. One question box call:
+
+1. **Which creators?** The handle or links they named (Recommended) / I'll paste more. Several is
+   normal: people like one creator's captions and another's pace. Each creator's style is one format.
+2. With more than one: **which part from whom?** **Not sure yet (Recommended)**: ask again after
+   Step 3b, with each creator's `look.md` to compare; or captions, pace (cuts, zooms, motion), visuals
+   (graphics, face framing, cards), sound.
+
+### Step 1: Get the videos
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/fetch.py" list <handle> --platform tiktok --limit 40   # or youtube
+python3 "${CLAUDE_SKILL_DIR}/scripts/fetch.py" list <name> --urls picks.txt   # pasted links, one a line
+```
+Prints a ranked table (views, x median) and writes `videos.json`; `*` marks 3x the median.
+
+**Instagram:** `list <handle> --platform instagram` reads the newest reels with views through the
+user's instagram.com login in their browser (sent only to instagram.com). No login: it exits 1 with
+one sentence; say it, or put 6+ reel links in `picks.txt` for `--urls` (ranked by likes; say so).
+
+### Step 2: Download and transcribe the winners and a control group
+
+```bash
+python3 "$VPY" "${CLAUDE_SKILL_DIR}/scripts/visual.py" download <handle>
+python3 "${CLAUDE_SKILL_DIR}/scripts/fetch.py" transcribe <handle>
+```
+
+`--top N` downloads and transcribes N plus 2 control videos (the 2 closest to the median;
+`--control` changes the 2) plus 2 spares for the format check (`--spare`), all of the creator's usual
+length when enough are. Pasted links: every one. The default `--top 8` is 12 videos; `--top 5`, the
+fast run, is 9; pass it to both commands. Both print the count first. `--ids <id>,<id>` picks exact
+videos. The median ones are the control: a move that appears in the 500K video *and* the 3K video is
+that creator's habit, not the reason the 500K one worked. Keep at least 2.
+
+Every measuring script works on several videos at once (`CT_JOBS=1` turns that off on a small laptop).
+
+Say the time first (download plus transcription, about 10 s a video on a 14-core Mac). Whisper
+(free, local) is the default; with an ElevenLabs key `transcribe` uses Scribe, which keeps every
+filler ($0.22 an hour of audio; give the estimate before 10+ videos).
+If filler counts lean on Whisper transcripts, say so in the teardown.
+
+### Step 3: Measure, then analyse
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/metrics.py" <handle>
+```
+
+Writes `metrics.json` (WPM per third, pauses, fillers, sentence length, you/I/we,
+repeated phrases), all off the word timestamps.
+
+Run Step 3b first, so the passes skip the videos `format.json` left out. Then load
+`${CLAUDE_SKILL_DIR}/references/analysis-framework.md` and run its passes. For pass 1, launch
+one `video-analyst` agent per video, all in one message (they run at once): give each the absolute
+`creator-teardowns/<handle>/` path and one id. Each returns a JSON beat map; merge them into the
+tables. Without an Agent tool, read `transcripts/<id>.timed.txt` yourself, one video at a time. Never
+read `transcripts/<id>.json` or `metrics.json` whole:
+
+1. **Beat map + timings.** Every video split into labelled beats with second-marks and word counts.
+2. **Voice/vocab profile.** Sentence length, person, commands, recurring phrases, and the moves the
+   user would not say.
+3. **Visual pass.** Always: Step 3b. It is what lets the user edit their own video in this style.
+4. **Card events**, only when the ask covers the creator's cards and graphics, or an edit plan is
+   coming. Writes `events.json` in the shape in `${CLAUDE_SKILL_DIR}/references/edit-plan.md`.
+   `scripts/strip.py` needs ffmpeg, `numpy` and `pillow`.
+
+Do not skip the timings: "hook lands by 0:03 and runs 14 words, items are 8-11 s each"
+is a format someone can film; "hook, then list, then close" is not.
+
+### Step 3b: The visual pass (measured, no images for you to read)
+
+```bash
+python3 "$VPY" "${CLAUDE_SKILL_DIR}/scripts/visual.py" measure <handle>
+python3 "$VPY" "${CLAUDE_SKILL_DIR}/scripts/look.py" measure <handle>
+python3 "$VPY" "${CLAUDE_SKILL_DIR}/scripts/format_check.py" check <handle>
+```
+
+Then the sheet pass (4 below), then `python3 "$VPY" "${CLAUDE_SKILL_DIR}/scripts/lookpass.py" merge <handle>`.
+
+Run them after `transcribe` (`look.py` matches OCR text to the spoken words).
+
+1. `visual.py`: cuts and their kinds, shot lengths, zooms, pans and shake.
+2. `look.py`: OCR 3 frames a second and YuNet faces: the captions (place, size, words,
+   case, colours, weight, entrance), face framing, graphics share, palette, motion
+   personality. About 40 s a video.
+3. `format_check.py`: a style is ONE format, not a blend of all they post. It groups the videos by frame,
+   face, captions, shot length and length; a majority group of 3+ is kept, the rest move to `video/left-out/`
+   (`format.json` says why; `references/look-pass.md`). Tell the user its first line when any differ
+   ("Using 4 of 6: 2 look like a different format."); if mixed, ask for more videos of one kind.
+4. The sheet pass: one Agent call with `model: "haiku"` reads `sheets/<id>.jpg` for each kept video
+   (one 3 x 3 sheet each, made by `visual.py`) and writes `video/<id>.look-ai.json` per
+   `lookpass.py prompt`: font, graphics style, transitions, what is not generic. Never a number.
+   Exact brief in `references/look-pass.md`. `lookpass.py merge` folds them into style.json.
+
+**Then read `look.md` (under 48 lines). Do not open frames or sheets.** Every field is in
+`${CLAUDE_SKILL_DIR}/references/look-pass.md`. Numbers in `style.json` come from code; never edit them
+by hand. Where `look.md` and the model's words disagree (say `motion: punchy` measured, `smooth`
+named), the measured one wins and the teardown says both.
+
+**No OCR engine** (doctor says optional): `captions` stays unmeasured and look.md
+says so. Install it (`doctor` prints the line) rather than reading sheets yourself.
+
+### Step 3c: The deep pass and the page
+
+```bash
+python3 "$VPY" "${CLAUDE_SKILL_DIR}/scripts/graphics.py" measure <handle>
+python3 "$VPY" "${CLAUDE_SKILL_DIR}/scripts/sound.py" measure <handle>
+python3 "$VPY" "${CLAUDE_SKILL_DIR}/scripts/report.py" build <handle>
+```
+
+Each measure prints one summary line and the file it wrote (`--json` prints the full block; not
+needed: look.md has the numbers). Run them after Step 3b (graphics.py masks the speaker with look.py's faces). They add every
+graphic (cropped, its kind, where it sits, how it enters and exits as a fitted GSAP ease),
+cut kinds and camera moves (visual.py), sound effects and music, the first 3 seconds of each
+video, winners against the control group, and an AI-tell scan of the creator's own look.
+Fields, methods, ceilings and cost: `${CLAUDE_SKILL_DIR}/references/teardown-page.md`.
+After `graphics.py measure`, run the haiku kinds pass in that reference (or the kinds stay the
+code's guess), then `sound.py` and `report.py`.
+
+Then open `creator-teardowns/<handle>/teardown.html` for the user (`open` on a Mac, `start` on
+Windows, `xdg-open` on Linux) and offer to publish it as an artifact. Do not read the page or
+its images yourself: look.md has the numbers. Tell the user in two or three lines what the
+winners do differently (the `Winners:` lines in look.md, with n) and any BAN-level AI tell
+in their look.
+
+Then ask in the question box (the page only shows the evidence; it has nothing to tick), one
+multi-select question: "Which parts of @<handle> should your edit copy?" Options: captions,
+pace, graphic kinds, entrance motion, layout, sound (at most 4 options a question: split into two
+questions if needed), each option's description one measured line from look.md (e.g. "slides in
+0.25 s with overshoot"). If any BAN tell sits
+in a part they pick, say which before they confirm. Save the answer:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/editplan.py" blend <handle>-mine --from <handle> \
+    --take captions,pace,graphics,entrances,layout,sound    # only the parts picked
+```
+
+style-edit reads `creator-teardowns/<handle>-mine/style.json`; a part left out uses its
+default. `report.py build` and `editplan.py blend` print the style's skill (`skill edit-like-<handle> -> <path>`,
+with ai-editor installed): tell the user its name. Feedback on that style edits that skill.
+
+### Step 3d: Several creators (when the user named more than one)
+
+Follow `${CLAUDE_SKILL_DIR}/references/blend.md`: Steps 1 to 3b per creator, `look.md` side by side,
+then `editplan.py blend`.
+
+### Step 4: Write the teardown
+
+Fill `${CLAUDE_SKILL_DIR}/references/teardown-template.md` into
+`creator-teardowns/<handle>/teardown.md`. Every video gets a stats line, verbatim
+transcript, beat table with timings, patterns to keep and patterns to reject.
+
+### Step 5 (optional): Turn it into a skill
+
+Ask whether the format is worth keeping. If yes, follow
+`${CLAUDE_SKILL_DIR}/references/skill-handoff.md` (the format skill, beside the style's own skill).
+
+### Step 6 (optional): Plan the user's video in the creator's style
+
+When the user hands over their own video, follow
+`${CLAUDE_SKILL_DIR}/references/edit-plan.md`. It needs the creator's `events.json`
+from the visual pass; it does not render.
+
+## If a script stops
+
+| message | do |
+|---|---|
+| doctor `Not ready: ...` | follow `references/setup.md` for each line it lists |
+| `yt-dlp returned nothing` / `parsed 0 videos` | read the hint it prints: update yt-dlp (doctor shows how), or ask for single video links and use `--urls` |
+| Instagram profile fails | say its sentence: log in to instagram.com in Chrome, or 6+ reel links (Step 1 "Instagram") |
+| `... Fix the key, then rerun` (transcribe) | the ElevenLabs key is wrong: the user re-saves it with `setkey` in their own terminal, or drop it and use Whisper |
+| `no videos in ... Run download first` | run `visual.py download <handle>` |
+| download `failed: <ids>` (exit 1) | rerun with the `--ids` it prints; if they fail again, say the sample is smaller and go on |
+| `yt-dlp not found` | run `fetch.py doctor` and fix what it lists |
+| some videos fail to transcribe | retry with `--ids`, then say which failed; never fill the gap |
+
+## Hard rules
+
+- **Real numbers or nothing.** Every claim about what works cites the view count next
+  to it. Never say a video "went viral" without the number.
+- **Verbatim transcripts only.** Never summarise a video that was not transcribed.
+- **Structure is copied, voice is not.** Every teardown states what to reject.
+- **Median control group.** At least two mid-performers transcribed, or the analysis
+  cannot separate the format from the creator's habits.
+- **Never invent a transcript line**, or a stat or quote for a card. If transcription
+  failed, retry with `--ids`, then say it failed.
+- **Never ask for the ElevenLabs key in the chat.**
+- **Measured numbers only in style.json.** `pace` and `zoom` come from `visual.py`;
+  `captions`, `face`, `graphics` and `motion` from `look.py`; only words (`look`,
+  `font_match`) from the model.
+- **Read look.md, not frames.** Open a frame only to settle a question look.md
+  cannot answer, and say which one. The user gets teardown.html; Claude gets look.md.
+- **Winners against control: say n.** Never call a difference proven; "every winner"
+  only means no overlap in this sample.

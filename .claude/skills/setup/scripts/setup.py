@@ -1,0 +1,1506 @@
+#!/usr/bin/env python3
+"""Check and install everything ai-editor needs. Stdlib only.
+
+  python3 setup.py doctor     one line per tool: ok, or FIX with the exact command for this computer;
+                              also FIX on drift from the pinned versions (env.json vs what is installed)
+  python3 setup.py doctor --quiet   silent when ready, else one line naming what is missing (the SessionStart hook)
+  python3 setup.py bootstrap [--matte]   the whole install, idempotent: venv, model, remotion, then doctor
+  python3 setup.py repair     reinstall the exact pinned set (fresh venv, npm ci, models re-verified)
+  python3 setup.py venv       create ~/.ai-video-editor/venv and install requirements/requirements.lock
+  python3 setup.py model      download the free transcription model (about 500 MB, once, sha256 checked)
+  python3 setup.py remotion   copy the renderer to ~/.ai-video-editor/remotion and npm ci it
+  python3 setup.py motion     install the motion clip tools in ~/.ai-video-editor/motion: the HyperFrames CLI and GSAP
+                              at the versions pinned in skills/motion/scripts/motion.py, and their headless Chrome
+  python3 setup.py warm       pay the first edit's one-time costs now: first load of the Python libraries,
+                              one test frame through the renderer (webpack's cache, the render browser's first start)
+  python3 setup.py install-all [--report]   venv, model, remotion, warm, then the cutout model, never asking; a
+                              failed step is said with its fix and the steps that do not need it still run. --report
+                              shows each step and its progress on the home page (home.py status setup)
+
+Pins: Python packages in .claude/requirements/requirements.lock (hashed, every OS);
+Node packages in remotion/package-lock.json; models in lib/ai_editor/models.py (URL + sha256).
+What got installed is recorded in ~/.ai-video-editor/env.json. AI_EDITOR_HOME moves the folder.
+  python3 setup.py setkey elevenlabs   save an API key (asks, hides what you type),
+                              after one free test request proves it works
+  python3 setup.py keys       test every saved key (one free request each)
+  python3 setup.py certs      let Python check secure websites ("fix my certificates"): certifi into the venv,
+                              and on macOS python.org's Install Certificates.command, then a re-test
+  python3 setup.py crisper    install CrisperWhisper, free verbatim transcription (about 1 GB; non-commercial licence)
+  python3 setup.py awskey     save AWS keys for Lambda renders (asks, hides what you type)
+  python3 setup.py lambda     check the AWS keys and permissions for Lambda renders
+  python3 setup.py modal-connect   cloud renders on Modal in one go: install it into the venv, log in in the
+                              browser (`modal setup`), build the render machine once, say the credit used
+                              (`modal` and `modal-check` do the same)
+  python3 setup.py modal-test      render a 5-second test video on Modal and say how long it took
+  python3 setup.py matte      download the person-matting model (15 MB) for cards behind the speaker
+  python3 setup.py later <step>   save an optional step for later (elevenlabs style modal matte)
+  python3 setup.py todo       every optional step not done yet ("finish setup")
+  python3 setup.py install-launcher     put the `ai-editor` command on the PATH (a user folder, no sudo;
+                              idempotent). It opens the editor's window with Claude Code behind it.
+  python3 setup.py uninstall-launcher   take it off again (and the PATH line, if install added one)
+  python3 setup.py demo       self-check
+
+Exit codes: 0 ready or done, 1 something to fix, 2 usage.
+"""
+import hashlib
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from ai_editor import keys, models, net, profile  # noqa: E402
+
+OS = platform.system()  # Darwin, Windows, Linux
+HOME = Path(os.environ.get("AI_EDITOR_HOME", Path.home() / ".ai-video-editor"))
+VENV = HOME / "venv"
+VPY = VENV / ("Scripts/python.exe" if OS == "Windows" else "bin/python")
+EDITOR = Path(__file__).resolve().parents[3]          # .claude: the editor's skills, lib and renderer
+REMOTION_SRC = EDITOR / "remotion"
+REMOTION_HOME = HOME / "remotion"
+MOTION_HOME = HOME / "motion"     # the motion skill's HyperFrames CLI and GSAP (npm), not the user's global npm
+MOTION_PY = EDITOR / "skills" / "motion" / "scripts" / "motion.py"
+LOCK = EDITOR / "requirements" / "requirements.lock"   # uv pip compile --universal --generate-hashes
+NPM_LOCK = REMOTION_SRC / "package-lock.json"
+ENV = HOME / "env.json"           # what was installed, from which pins
+HOME_PY = EDITOR / "lib" / "ai_editor" / "home.py"
+MODEL = os.environ.get("AI_EDITOR_WHISPER_MODEL", "small")
+PYTHON_MIN = (3, 10)   # current yt-dlp and numpy need it; macOS's built-in 3.9 gets a newer Python
+NODE_MIN = 20          # Remotion 4
+FFMPEG_MIN = (4, 4)    # sfx.py mixes with amix normalize=0, added in FFmpeg 4.4
+# Optional extras, pinned; installed with the lock as constraints so they never move a pinned package.
+OPTIONAL = {"modal": "modal==1.6.1", "crisperwhisper": "crisperwhisper[transformers]==2.0.3"}
+
+# NodeSource's manual steps (signed apt source), not its setup script piped to a root shell.
+NODESOURCE = ("sudo apt install -y ca-certificates curl gnupg && sudo mkdir -p /etc/apt/keyrings && "
+              "curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor --yes "
+              "-o /etc/apt/keyrings/nodesource.gpg && echo \"deb [signed-by=/etc/apt/keyrings/nodesource.gpg] "
+              "https://deb.nodesource.com/node_22.x nodistro main\" | sudo tee /etc/apt/sources.list.d/nodesource.list "
+              "&& sudo apt update && sudo apt install -y nodejs")
+PACMAN = "sudo pacman -S --needed --noconfirm "
+INSTALL = {  # tool -> (mac, windows, {linux package manager: command})
+    "python": ("brew install python", "winget install -e --id Python.Python.3.12",
+               {"apt": "sudo apt install -y python3 python3-venv", "dnf": "sudo dnf install -y python3",
+                "pacman": PACMAN + "python"}),
+    "ffmpeg": ("brew install ffmpeg", "winget install -e --id Gyan.FFmpeg",
+               {"apt": "sudo apt install -y ffmpeg", "dnf": "sudo dnf install -y ffmpeg-free",
+                "pacman": PACMAN + "ffmpeg"}),
+    # Debian and Ubuntu ship a Node older than 20, so apt gets NodeSource's; Fedora and Arch are current.
+    "node": ("brew install node", "winget install -e --id OpenJS.NodeJS.LTS",
+             {"apt": NODESOURCE, "dnf": "sudo dnf install -y nodejs", "pacman": PACMAN + "nodejs npm"}),
+    "git": ("xcode-select --install", "winget install -e --id Git.Git",
+            {"apt": "sudo apt install -y git", "dnf": "sudo dnf install -y git", "pacman": PACMAN + "git"}),
+}
+
+
+UPGRADE = {  # installed but older than the minimum
+    "ffmpeg": ("brew upgrade ffmpeg", "winget upgrade -e --id Gyan.FFmpeg",
+               {"apt": "sudo apt update && sudo apt install -y ffmpeg   (Ubuntu 22.04 or newer)",
+                "dnf": "sudo dnf upgrade -y ffmpeg-free", "pacman": "sudo pacman -Syu --noconfirm ffmpeg"}),
+    "node": ("brew upgrade node", "winget upgrade -e --id OpenJS.NodeJS.LTS", INSTALL["node"][2]),
+}
+
+
+def linux_pm(which=shutil.which):
+    """apt, dnf or pacman: the first one this Linux has (apt when none is found)."""
+    return next((pm for pm, exe in (("apt", "apt-get"), ("dnf", "dnf"), ("pacman", "pacman")) if which(exe)), "apt")
+
+
+def fix(tool, table=INSTALL, os_name=None, which=shutil.which):
+    mac, win, linux = table[tool]
+    return {"Darwin": mac, "Windows": win}.get(os_name or OS) or linux[linux_pm(which)]
+
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def version(cmd):
+    exe = shutil.which(cmd[0])
+    if not exe:
+        return None
+    try:
+        out = run([exe, *cmd[1:]], timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return (out.stdout + out.stderr).strip().splitlines()[0] if out.returncode == 0 else None
+
+
+def major(text):
+    m = re.search(r"(\d+)\.", text or "")
+    return int(m.group(1)) if m else 0
+
+
+def ffmpeg_version(text):
+    """(major, minor) from `ffmpeg -version`; a git build (version N-...) counts as new."""
+    if re.search(r"version N-", text or ""):
+        return (99, 0)
+    m = re.search(r"version n?(\d+)\.(\d+)", text or "")
+    return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+
+def file_sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest() if Path(path).exists() else None
+
+
+def norm(name):
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def installed():
+    """{package: version} in the venv, {} without one."""
+    if not VPY.exists():
+        return {}
+    code = ("import json, importlib.metadata as m; print(json.dumps({d.metadata['Name']: d.version "
+            "for d in m.distributions() if d.metadata['Name']}))")
+    r = run([str(VPY), "-c", code])
+    return {norm(k): v for k, v in json.loads(r.stdout).items()} if r.returncode == 0 else {}
+
+
+def env_load():
+    try:
+        return json.loads(ENV.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def env_save(**kv):
+    """Merge into env.json; untouched when nothing changed, so a re-run leaves it byte-identical."""
+    old = env_load()
+    new = {**old, **kv}
+    if new != old:
+        HOME.mkdir(parents=True, exist_ok=True)
+        ENV.write_text(json.dumps(new, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def npm_version(name):
+    """The version npm ci installs for a package, from the shipped package-lock.json."""
+    try:
+        return json.loads(NPM_LOCK.read_text(encoding="utf-8"))["packages"][f"node_modules/{name}"]["version"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def drift(env, have, remotion_have):
+    """What differs from the pins, per area: {"python": [...], "renderer": [...], "model": [...]}.
+    env is env.json, have the venv's {package: version}, remotion_have the installed remotion
+    version. Pure, so the demo can feed it a made-up env.json."""
+    out = {"python": [], "renderer": [], "model": []}
+    if have:
+        if not env.get("python_packages"):
+            out["python"].append("installed before version pins")
+        elif env.get("python_lock") != file_sha(LOCK):
+            out["python"].append("requirements.lock changed since the install")
+        for name, want in sorted(env.get("python_packages", {}).items()):
+            if have.get(name) != want:
+                out["python"].append(f"{name} {have.get(name, 'missing')}, pinned {want}")
+    if remotion_have:
+        if env.get("node_lock") != file_sha(NPM_LOCK):
+            out["renderer"].append("package-lock.json changed since the install (or installed before pins)")
+        if remotion_have != npm_version("remotion"):
+            out["renderer"].append(f"remotion {remotion_have}, pinned {npm_version('remotion')}")
+    for rel, sha in sorted(env.get("models", {}).items()):
+        if rel in models.PINS and models.PINS[rel][1] != sha:
+            out["model"].append(f"{rel}: pin changed since the download")
+    return out
+
+
+def adopt(env, have, remotion_have):
+    """What to record in env.json for an install made before env.json existed, when it already matches
+    the pins: every unconditional pin installed, every installed pinned package at a pinned version,
+    remotion at its pin. Anything else is {} for that area, so real drift stays a FIX."""
+    from ai_editor import lock
+    out = {}
+    if have and not env.get("python_packages"):
+        want = {}
+        for b in lock.blocks(LOCK.read_text(encoding="utf-8")):
+            want.setdefault(norm(b["name"]), [set(), False])[0].add(b["version"])
+            want[norm(b["name"])][1] |= not b["marker"]      # a pin with no marker applies everywhere
+        if all((n in have and have[n] in vs) if always else (n not in have or have[n] in vs)
+               for n, (vs, always) in want.items()):
+            out.update(python_lock=file_sha(LOCK), python_packages=have)
+    if remotion_have and not env.get("node_lock") and remotion_have == npm_version("remotion"):
+        out["node_lock"] = file_sha(NPM_LOCK)
+    return out
+
+
+def remotion_installed():
+    try:
+        return json.loads((REMOTION_HOME / "node_modules" / "remotion" / "package.json").read_text(encoding="utf-8"))["version"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def motion_pins():
+    """{package: version} from motion.py (HF_VERSION, GSAP_VERSION): one place pins them."""
+    text = MOTION_PY.read_text(encoding="utf-8")
+    return {"hyperframes": re.search(r'HF_VERSION = "([^"]+)"', text)[1], "gsap": re.search(r'GSAP_VERSION = "([^"]+)"', text)[1]}
+
+
+def motion_have():
+    """{package: installed version} in MOTION_HOME."""
+    have = {}
+    for name in ("hyperframes", "gsap"):
+        try:
+            have[name] = json.loads((MOTION_HOME / "node_modules" / name / "package.json").read_text(encoding="utf-8"))["version"]
+        except (OSError, ValueError, KeyError):
+            pass
+    return have
+
+
+def motion_bin():
+    return MOTION_HOME / "node_modules" / ".bin" / ("hyperframes.cmd" if OS == "Windows" else "hyperframes")
+
+
+def motion_row():
+    """(ok, detail): the pinned packages are in MOTION_HOME and the CLI finds its headless Chrome."""
+    pins, have = motion_pins(), motion_have()
+    off = [f"{k} {have.get(k, 'missing')}, pinned {v}" for k, v in pins.items() if have.get(k) != v]
+    if off:
+        return False, "; ".join(off)
+    b = run([str(motion_bin()), "browser", "path"], timeout=60) if motion_bin().exists() else None
+    if not b or b.returncode:
+        return False, "no headless Chrome for clips"
+    return True, f"hyperframes {pins['hyperframes']}, gsap {pins['gsap']}"
+
+
+def step_motion(force=False, tick=None):
+    """The motion skill's tools: `npm install` of the pinned HyperFrames CLI and GSAP into MOTION_HOME, then the
+    CLI's own headless Chrome (`hyperframes browser ensure`). About a minute and 500 MB on a first install."""
+    npm = shutil.which("npm")
+    if not npm:
+        sys.exit(f"npm missing. Install Node first: {fix('node')}")
+    MOTION_HOME.mkdir(parents=True, exist_ok=True)
+    pkg = MOTION_HOME / "package.json"
+    if not pkg.exists():
+        pkg.write_text('{"private": true, "description": "ai-editor motion clip tools"}\n', encoding="utf-8")
+    done = "up to date"
+    pins = motion_pins()
+    if force or motion_have() != pins:
+        if tick:
+            tick(0.1, "the HyperFrames CLI and GSAP")
+        quiet([npm, "install", "--save-exact", "--no-audit", "--no-fund", "--loglevel=error"] +
+              [f"{k}@{v}" for k, v in pins.items()], MOTION_HOME, "installing the motion clip tools (npm install)")
+        done = "installed"
+    b = run([str(motion_bin()), "browser", "path"], timeout=60)
+    if force or b.returncode:
+        if tick:
+            tick(0.5, "the clip browser")
+        quiet([str(motion_bin()), "browser", "ensure"], MOTION_HOME, "downloading the clip browser")
+        done = "installed"
+    env_save(motion=pins)
+    print(f"Motion clip tools {done} in {MOTION_HOME}")
+    return done
+
+
+def venv_has(module):
+    return VPY.exists() and run([str(VPY), "-c", f"import {module}"]).returncode == 0
+
+
+def model_cached():
+    if MODEL in models.WHISPER:
+        return models.whisper_dir(MODEL) is not None
+    return any((HOME / "models").glob(f"**/*faster-whisper-{MODEL}*"))   # a size with no pin
+
+
+def checks():
+    """(name, ok, detail, fix command or None)"""
+    rows = []
+    py = sys.version_info
+    need = ".".join(map(str, PYTHON_MIN))
+    rows.append(("python", py >= PYTHON_MIN, f"{py.major}.{py.minor} (need {need}+)", fix("python")))
+    ff = version(["ffmpeg", "-version"])
+    ff_ok = ffmpeg_version(ff) >= FFMPEG_MIN
+    rows.append(("ffmpeg", ff_ok, f"{ff or 'missing'} (need {'.'.join(map(str, FFMPEG_MIN))}+)",
+                 fix("ffmpeg", UPGRADE if ff else INSTALL)))
+    node = version(["node", "--version"])
+    rows.append(("node", major(node) >= NODE_MIN, f"{node or 'missing'} (need {NODE_MIN}+)",
+                 fix("node", UPGRADE if node else INSTALL)))
+    git = version(["git", "--version"])
+    rows.append(("git", bool(git), git or "missing", fix("git")))
+    py_self = "py" if OS == "Windows" else "python3"
+    here = Path(__file__).resolve()
+    remo = remotion_installed()
+    have = installed()
+    found = adopt(env_load(), have, remo)
+    if found:   # installed before env.json: record it instead of sending a working install to repair
+        env_save(**found)
+    d = drift(env_load(), have, remo)
+    rows.append(("python packages", VPY.exists() and not d["python"], "; ".join(d["python"][:4]) or str(VENV),
+                 f'{py_self} "{here}" ' + ("repair" if VPY.exists() else "venv")))
+    rows.append(("transcription model", model_cached() and not d["model"], f"faster-whisper {MODEL}",
+                 f'{py_self} "{here}" model'))
+    rows.append(("renderer", bool(remo) and not d["renderer"], "; ".join(d["renderer"]) or str(REMOTION_HOME),
+                 f'{py_self} "{here}" ' + ("repair" if remo else "remotion")))
+    mo_ok, mo_detail = motion_row()
+    rows.append(("motion clips", mo_ok, mo_detail, f'{py_self} "{here}" motion'))
+    return rows
+
+
+DISK_MIN_GB = 3   # setup installs about 1.5 GB; the cutout writes about 0.5 MB a frame
+
+
+def disk_row(free_bytes):
+    """(ok, detail) for the free space where the tools and edits go. Pure, so the demo can feed it."""
+    gb = free_bytes / 1e9
+    if gb >= DISK_MIN_GB:
+        return True, f"{gb:.1f} GB free"
+    return False, (f"{gb:.1f} GB free, need {DISK_MIN_GB} GB: setup installs about 1.5 GB and the cutout "
+                   "writes about 0.5 MB a frame (about 0.9 GB a minute at 30 fps)")
+
+
+MODEL_MB = {"tiny": 75, "base": 145, "small": 484, "medium": 1530, "large-v3": 3100, "crisper": 1000}   # download sizes
+SPARE_GB = 1   # left free after a model lands, for the edits
+
+
+def room(what, mb, free=None):
+    """Before a model download: says its size and the free space, and stops when it would leave under SPARE_GB."""
+    gb = (free_bytes() if free is None else free) / 1e9
+    if gb < mb / 1000 + SPARE_GB:
+        sys.exit(f"Not downloading {what} (about {mb} MB): {gb:.1f} GB free, and it needs {mb / 1000 + SPARE_GB:.1f} GB "
+                 "with room for the edits. Free some space and run it again.")
+    print(f"Downloading {what}, about {mb} MB ({gb:.1f} GB free).", flush=True)
+
+
+def free_bytes():
+    p = HOME
+    while not p.exists():
+        p = p.parent
+    return shutil.disk_usage(p).free
+
+
+def install_certificates_command():
+    """python.org's macOS fixer for the running Python, or None."""
+    p = Path(f"/Applications/Python {sys.version_info.major}.{sys.version_info.minor}/Install Certificates.command")
+    return p if OS == "Darwin" and p.exists() else None
+
+
+def certs_row(online=True):
+    """(ok, detail, fix). CA certs in net.context() (no network); online, a 3 s HEAD to ElevenLabs as well,
+    which only fails the row on a certificate error (offline is not this row's problem)."""
+    n = net.context().cert_store_stats()["x509_ca"]
+    ok = n > 0
+    if ok and online:
+        import urllib.request
+        try:
+            net.urlopen(urllib.request.Request("https://api.elevenlabs.io", method="HEAD"), 3).close()
+        except Exception as e:   # an HTTP status or no network is fine here
+            ok = not net.is_cert_error(e)
+    cmd = install_certificates_command()
+    fix_cmd = (f'open "{cmd}"' if cmd else
+               f'{"py" if OS == "Windows" else "python3"} "{Path(__file__).resolve()}" certs')
+    return ok, (f"{n} trusted certificates" if ok else "this Python can't check secure websites "
+                "(key checks and ElevenLabs calls fail)"), fix_cmd
+
+
+def step_certs():
+    """certifi at its pin into the venv (net.py finds it there even from the system python3), python.org's
+    Install Certificates.command on macOS when this Python has no certificates of its own, then a re-test."""
+    if VPY.exists():
+        pin = re.search(r"^certifi==(\S+)", LOCK.read_text(encoding="utf-8"), re.M).group(1)
+        subprocess.run([str(VPY), "-m", "pip", "install", "-q", "--disable-pip-version-check", f"certifi=={pin}"],
+                       check=True)
+    import ssl
+    cmd = install_certificates_command()
+    if cmd and ssl.create_default_context().cert_store_stats()["x509_ca"] == 0:
+        subprocess.run([str(cmd)], check=False)
+    ok, detail, fix_cmd = certs_row()
+    print(f"{'ok ' if ok else 'FIX'}  {'secure web':<20} {detail}")
+    if not ok:
+        print(f"     run: {fix_cmd}")
+    return 0 if ok else 1
+
+
+def key_line(name, have, without, where):
+    """One doctor row. A missing key points at the setup skill, which saves it from the clipboard
+    (the same one instruction as setup SKILL.md step 5), never at a terminal."""
+    return f"{'ok ' if where else '-- '}  {name + ' key':<20} " + (
+        f"{have} ({where})" if where else f"{without}. Say \"add my {name} key\": setup saves it from your clipboard")
+
+
+def doctor():
+    rows = checks()
+    for name, ok, detail, cmd in rows:
+        print(f"{'ok ' if ok else 'FIX'}  {name:<20} {detail}")
+        if not ok:
+            print(f"     run: {cmd}")
+    disk_ok, detail = disk_row(free_bytes())
+    print(f"{'ok ' if disk_ok else 'FIX'}  {'free disk':<20} {detail}")
+    if not disk_ok:
+        print("     empty the Trash, delete old renders or move large files, then run doctor again")
+    cut = (models.DIR / MATTE).exists()   # optional: it downloads the first time cards go behind the speaker
+    print(f"{'ok ' if cut else '-- '}  {'cutout model':<20} " + ("installed: cards behind you" if cut else
+          f"downloads the first time cards go behind you: {'py' if OS == 'Windows' else 'python3'} \"{Path(__file__).resolve()}\" matte"))
+    certs_ok, detail, cmd = certs_row()
+    print(f"{'ok ' if certs_ok else 'FIX'}  {'secure web':<20} {detail}")
+    if not certs_ok:
+        print(f"     run: {cmd}")
+    here = Path(__file__).resolve()
+    py_self = "py" if OS == "Windows" else "python3"
+    for name, have, without in KEY_ROWS:
+        print(key_line(name, have, without, keys.get(name)[1]))
+    cw = venv_has("crisperwhisper")
+    print(f"{'ok ' if cw else '-- '}  {'crisperwhisper':<20} " + ("installed: free verbatim transcripts" if cw else
+          f"optional, keeps every um and restart for free (non-commercial licence): {py_self} \"{here}\" crisper"))
+    gh = shutil.which("gh")
+    gh_ok = bool(gh) and run([gh, "auth", "status"]).returncode == 0
+    gh_fix = {"Darwin": "brew install gh", "Windows": "winget install --id GitHub.CLI"}.get(
+        OS, "see github.com/cli/cli/blob/trunk/docs/install_linux.md")
+    print(f"{'ok ' if gh_ok else '-- '}  {'github cli':<20} " + ("logged in: GitHub Actions renders" if gh_ok else
+          f"optional, for free GitHub Actions renders. {'run: gh auth login --web' if gh else 'install: ' + gh_fix}"))
+    mo = modal_status()
+    print(f"{'ok ' if mo == 'ready' else '-- '}  {'modal':<20} " + {
+        "ready": "logged in: cloud renders on Modal",
+        "no token": f"installed, not logged in: {py_self} \"{here}\" modal-connect (opens the browser)",
+        "missing": f"optional, cloud renders on Modal ($30 free credit a month): {py_self} \"{here}\" modal-connect"}[mo])
+    node = shutil.which("node")
+    if node:   # logged-in captures need an installed Chrome; login.mjs says which, or why none works
+        b = run([node, str(EDITOR / "skills/product-video/scripts/login.mjs"), "browser"], timeout=30)
+        print(browser_line(b.returncode == 0, b.stdout.strip()))
+    for domain, days, _ in saved_logins():
+        print(login_line(domain, days))
+    ready = all(r[1] for r in rows) and disk_ok and certs_ok
+    if ENV.exists():
+        print(f"     installed versions: {ENV}")
+    print("Ready." if ready else "Not ready. Fix the lines above, top to bottom.")
+    return 0 if ready else 1
+
+
+def browser_line(ok, out):
+    """Optional row: logged-in captures need an installed Chrome. A Flatpak-only Chrome says so, with the fix."""
+    return f"{'ok ' if ok else '-- '}  {'chrome':<20} " + (
+        f"{out} (logged-in captures)" if ok else "optional, for logged-in captures. " + out.removeprefix("ERROR: "))
+
+
+def saved_logins(home=None):
+    """[(domain, days since last use, folder)]: every logged-in capture profile login.mjs keeps in <home>/browser/.
+    Each holds a live login (cookies) on this computer until the user logs out."""
+    root = Path(home or HOME) / "browser"
+    if not root.is_dir():
+        return []
+    # max(0, ...): a folder written a moment ago can carry an mtime just ahead of time.time() (Windows)
+    return [(d.name, max(0, int((time.time() - (d / "Default").stat().st_mtime) // 86400)), d)
+            for d in sorted(root.iterdir()) if (d / "Default").is_dir()]
+
+
+def login_line(domain, days):
+    age = "today" if days < 1 else f"{days} day{'s' if days > 1 else ''} ago"
+    return (f"--   {'saved login':<20} {domain}, last used {age}. Still logged in on this computer; "
+            f"say \"log me out of {domain}\" to delete it")
+
+
+KEY_ROWS = [  # name, what it gives, what happens without it
+    ("elevenlabs", "found: Scribe transcripts keep every filler",
+     "Optional: without it transcripts are free and local"),
+]
+KEY_HELP = {"elevenlabs": "https://elevenlabs.io/app/settings/api-keys"}
+LATER = HOME / "later.json"   # steps the user chose to do later; doctor reminds, "finish setup" resumes
+
+
+def later_load():
+    try:
+        return json.loads(LATER.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+
+
+MATTE = "rvm_mobilenetv3_fp32.onnx"
+STEP_HELP = {**KEY_HELP, "style": "the style questions (2 min)", "modal": "cloud renders on Modal (3 min)",
+             "matte": "cards behind the speaker (15 MB download)"}
+STEPS = tuple(STEP_HELP)   # every optional step `later` and `todo` know
+
+
+def step_done():
+    """Optional step -> is it done? The same checks doctor's rows read."""
+    return {**{k: (lambda k=k: bool(keys.get(k)[0])) for k in KEY_HELP},
+            "style": lambda: not profile.missing(profile.STYLE_QUESTIONS),
+            "modal": lambda: modal_status() == "ready",
+            "matte": lambda: (models.DIR / MATTE).exists()}
+
+
+def later(name):
+    """Remember a skipped step (a key name, "modal", "style", "matte")."""
+    if name not in STEPS:
+        print(f"Unknown step: {name}. Steps: {', '.join(STEPS)}", file=sys.stderr)
+        return 2
+    items = [x for x in later_load() if x != name] + [name]
+    HOME.mkdir(parents=True, exist_ok=True)
+    LATER.write_text(json.dumps(items), encoding="utf-8")
+    print(f"Saved for later: {name}. Say \"finish setup\" any time to add it.")
+    return 0
+
+
+def still_later():
+    """Skipped steps that are still not done. A step this version no longer has (an old "typesafe") is ignored."""
+    done = step_done()
+    return [x for x in later_load() if x in done and not done[x]()]
+
+
+def todo(done=None):
+    """Every optional step not done yet, saved for later or never asked (bootstrap skips them all)."""
+    done = done or step_done()
+    items = [x for x in STEPS if not done[x]()]
+    print("\n".join(f"todo   {x:<11} {STEP_HELP[x]}" for x in items) or "Nothing left to finish.")
+    return items
+
+
+def clip_kind(text):
+    """What the clipboard holds instead of a key, without showing it."""
+    t = text.strip()
+    if not t:
+        return "the clipboard is empty"
+    if "\n" in t:
+        return f"the clipboard holds {t.count(chr(10)) + 1} lines of text, not one key"
+    if t.startswith(("/", "!", "python", "pbpaste", "claude", "npx")):
+        return "the clipboard holds a command, not the key"
+    if t.startswith("http"):
+        return "the clipboard holds a web address, not the key"
+    if " " in t:
+        return "the clipboard holds words with spaces, not the key"
+    if len(t) < 20:
+        return f"the clipboard holds something {len(t)} characters long; keys are longer"
+    return "that doesn't look like a key"
+
+
+def set_key(name):
+    import getpass
+    if name not in keys.VARS:
+        sys.exit(f"Which key? setkey {' | '.join(keys.VARS)}")
+    if sys.stdin.isatty():
+        key = getpass.getpass(f"Paste your {name} API key and press Enter (it stays hidden): ")
+    else:
+        key = sys.stdin.readline()
+    key = key.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_\-.]{20,}", key):
+        sys.exit(f"Nothing saved: {clip_kind(key)}. Copy only the key from {KEY_HELP[name]}, then pick Copied again.")
+    ok, msg = keys.verify(name, key)
+    if not ok and not msg.startswith("no connection"):
+        sys.exit(f"Not saved: {msg}")
+    path = keys.save(name, key)
+    print(f"Saved to {path}." + ("" if ok else f" Not tested ({msg}): run `setup.py keys` when online."))
+    if ok:
+        print(f"Tested: the {name} key works.")
+    return 0
+
+
+def test_keys():
+    bad = 0
+    for name in keys.VARS:
+        key, where = keys.get(name)
+        if not key:
+            print(f"--   {name:<11} not saved")
+            continue
+        ok, msg = keys.verify(name, key)
+        bad += not ok
+        print(f"{'ok ' if ok else 'FIX'}  {name:<11} {msg} ({where})")
+    return 1 if bad else 0
+
+
+def install_crisper():
+    if not VPY.exists():
+        sys.exit("Run the venv step first.")
+    v = run([str(VPY), "-c", "import sys; print(sys.version_info >= (3, 10))"]).stdout.strip()
+    if v != "True":
+        sys.exit("CrisperWhisper needs Python 3.10 or newer in the venv. Keep using Whisper, or "
+                 f"install a newer Python ({fix('python')}), delete {VENV} and run the venv step again.")
+    # The PyTorch build runs on Mac, Windows and Linux, CPU or GPU. The faster ct2 build is NVIDIA-only.
+    room("CrisperWhisper", MODEL_MB["crisper"])
+    pip_optional("crisperwhisper")
+    env = dict(os.environ, HF_HOME=str(HOME / "models"))
+    name = os.environ.get("AI_EDITOR_CRISPER_MODEL", "small")
+    subprocess.run([str(VPY), "-c", f"from crisperwhisper import CrisperWhisperModel; "
+                    f"CrisperWhisperModel('{name}'); print('crisperwhisper ready')"], check=True, env=env)
+
+
+def doctor_quiet():
+    rows = [r for r in checks() if not r[1]]
+    missing = [name for name, _, _, cmd in rows if not cmd.endswith("repair")]
+    drifted = [name for name, _, _, cmd in rows if cmd.endswith("repair")]
+    if missing and not profile.path().exists():   # first run: the window opens before anything installs
+        print("First run of ai-editor. Open its window first (home.py serve and wait in the background), "
+              "then install in the background with setup.py install-all --report (the setup skill's step 0).")
+    elif missing:
+        print(f"ai-editor is missing {', '.join(missing)}. Say \"set up the editor\" to install.")
+    elif drifted:
+        print(f"ai-editor found {', '.join(drifted)} moved off the pinned versions. "
+              f"Run: {'py' if OS == 'Windows' else 'python3'} \"{Path(__file__).resolve()}\" repair")
+    elif still_later():
+        print(f"ai-editor saved for later: {', '.join(still_later())}. Say \"finish setup\" to add.")
+    return 0   # never block the session
+
+
+def pip_optional(name):
+    """Install an optional extra at its pin, holding every recorded package where it is."""
+    cons = HOME / "constraints.txt"
+    cons.write_text("".join(f"{k}=={v}\n" for k, v in sorted(env_load().get("python_packages", {}).items())), encoding="utf-8")
+    subprocess.run([str(VPY), "-m", "pip", "install", "-q", "-c", str(cons), OPTIONAL[name]], check=True)
+
+
+def step_venv(force=False, tick=None):
+    """A venv holding exactly requirements.lock. Rebuilt from scratch on drift, so nothing stale stays."""
+    if sys.version_info < PYTHON_MIN:
+        sys.exit(f"Python {'.'.join(map(str, PYTHON_MIN))}+ needed, this is {sys.version.split()[0]}. "
+                 f"Install it: {fix('python')}, then run this again in a new terminal.")
+    have = installed()
+    if have and not force and not drift(env_load(), have, None)["python"]:
+        print(f"python packages: up to date ({VENV})")
+        return "up to date"
+    extras = [x for x in OPTIONAL if norm(x) in have]     # reinstalled after the rebuild
+    if VENV.exists():
+        shutil.rmtree(VENV)
+    HOME.mkdir(parents=True, exist_ok=True)
+    subprocess.run([sys.executable, "-m", "venv", str(VENV)], check=True)
+    # --no-deps: the lock is complete. It also keeps rapidocr's opencv-python out, which would
+    # fight opencv-python-headless over the same cv2 folder.
+    from ai_editor import lock
+    total, seen = len(lock.blocks(LOCK.read_text(encoding="utf-8"))), [0]
+
+    def line(text):   # pip says Collecting (or Ignoring, for another OS's pin) once per lock entry
+        if tick and text.startswith(("Collecting ", "Ignoring ")):
+            seen[0] += 1
+            tick(min(0.95, seen[0] / total), f"{seen[0]} of {total} packages")
+    quiet([VPY, "-m", "pip", "install", "--disable-pip-version-check", "--progress-bar", "off", "--no-deps",
+           "--require-hashes", "-r", LOCK], None, "installing the Python packages (pip)", line)
+    env_save(python_lock=file_sha(LOCK), python_packages=installed(),
+             python=platform.python_version(), os=f"{OS} {platform.machine()}")
+    for x in extras:
+        pip_optional(x)
+    print(f"Python packages ready in {VENV}")
+    return "installed"
+
+
+def step_model(force=False, tick=None):
+    """The pinned transcription model, sha256 checked on download (and on every repair)."""
+    if not venv_has("faster_whisper"):
+        sys.exit("Run the venv step first.")
+    whisper = {r: models.PINS[r][1] for r in models.PINS if r.startswith(f"faster-whisper-{MODEL}/")}
+    pins = {**whisper, "yunet.onnx": models.PINS["yunet.onnx"][1]}     # + the face finder, 230 KB
+    rec = env_load().get("models", {})
+    fresh = not model_cached() or not (models.DIR / "yunet.onnx").exists()
+    check = force or any(rec.get(r) != v for r, v in pins.items())
+    if not model_cached():
+        room(f"the {MODEL} transcription model", MODEL_MB.get(MODEL, 1500))
+
+    def hook(blocks, size, total):   # the big file (model.bin, about 480 MB) is the bar
+        if tick and total > 5e6:
+            tick(min(1, blocks * size / total), f"{min(blocks * size, total) // 10**6} of {total // 10**6} MB")
+    models.fetch("yunet.onnx", check)
+    if whisper:
+        models.whisper(MODEL, check, hook)
+    else:   # a size with no pin (AI_EDITOR_WHISPER_MODEL=medium...): faster-whisper's own download
+        code = ("from faster_whisper import WhisperModel; "
+                f"WhisperModel('{MODEL}', device='cpu', compute_type='int8', download_root=r'{HOME / 'models'}')")
+        subprocess.run([str(VPY), "-c", code], check=True)
+    env_save(models={**rec, **pins})
+    print(f"transcription model ready: faster-whisper {MODEL}" + ("" if whisper else " (no pin for this size)"))
+    return "installed" if fresh or force else "up to date"
+
+
+def sync_tree(src, dst):
+    """Copy files that differ; a re-run touches nothing."""
+    for f in src.rglob("*"):
+        rel = f.relative_to(src)
+        if rel.parts[0] in ("node_modules", "out") or f.name == ".DS_Store" or not f.is_file():
+            continue
+        to = dst / rel
+        if not to.exists() or to.read_bytes() != f.read_bytes():
+            to.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, to)
+
+
+def kill_tree(p):
+    """Stop a process and everything it started (edit.py's node and its render browser)."""
+    if OS == "Windows":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+    else:
+        import signal
+        try:
+            os.killpg(p.pid, signal.SIGKILL)   # its own group: start_new_session below
+        except OSError:
+            p.kill()
+
+
+def quiet(cmd, cwd, what, on_line=None, timeout=None, env=None):
+    """A tool's own chatter ("added 369 packages in 3s", "Has browser at /private/...") kept back; shown
+    only when the step fails, then a one-line reason. on_line(line) sees each line as it comes (progress).
+    timeout: seconds before the tool and everything it started are stopped, said as a failure."""
+    p = subprocess.Popen([str(c) for c in cmd], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, encoding="utf-8", errors="replace", env=env,
+                         start_new_session=bool(timeout) and OS != "Windows")
+    killed = []   # Timer.cancel() also sets .finished, so the timer says itself when it fired
+    timer = threading.Timer(timeout, lambda: (killed.append(1), kill_tree(p))) if timeout else None
+    if timer:
+        timer.daemon = True
+        timer.start()
+    tail = []
+    try:
+        for line in p.stdout:
+            tail = (tail + [line])[-80:]
+            if on_line:
+                on_line(line)
+        code = p.wait()
+    finally:
+        if timer:
+            timer.cancel()
+    if killed and code:
+        sys.exit(f"ERROR: {what} took over {timeout} s and was stopped.")
+    if code:
+        print("".join(tail).strip()[-3000:])
+        sys.exit(f"ERROR: {what} failed (exit {p.returncode}); its output is above.")
+
+
+def step_remotion(force=False, tick=None):
+    npm = shutil.which("npm")
+    if not npm:
+        sys.exit(f"npm missing. Install Node first: {fix('node')}")
+    REMOTION_HOME.mkdir(parents=True, exist_ok=True)
+    sync_tree(REMOTION_SRC, REMOTION_HOME)
+    done = "up to date"
+    if force or drift(env_load(), {}, remotion_installed() or "missing")["renderer"]:
+        # npm ci: exactly package-lock.json, never a re-resolve. --ignore-scripts: the one install
+        # script (esbuild's) only re-checks a binary npm already placed; newer npm warns about it.
+        stop = threading.Event()
+        if tick:   # npm prints no progress: count the lock's packages already on disk
+            pk = [k for k in json.loads(NPM_LOCK.read_text(encoding="utf-8"))["packages"] if k]
+
+            def poll():
+                while not stop.wait(1):
+                    n = sum((REMOTION_HOME / k).exists() for k in pk)
+                    tick(0.9 * n / len(pk), f"{n} of {len(pk)} packages")
+            threading.Thread(target=poll, daemon=True).start()
+        try:
+            quiet([npm, "ci", "--ignore-scripts", "--no-audit", "--no-fund", "--loglevel=error"], REMOTION_HOME,
+                  "installing the renderer's packages (npm ci)")
+        finally:
+            stop.set()
+        done = "installed"
+    if not list((REMOTION_HOME / "node_modules" / ".remotion").glob("chrome-headless-shell/*")):
+        if tick:
+            tick(0.92, "the render browser")
+        try:
+            quiet([shutil.which("npx"), "remotion", "browser", "ensure"], REMOTION_HOME, "downloading the render browser")
+        except SystemExit:   # a first edit running now fetches the same browser into the same folder: wait for it
+            for _ in range(60):
+                if list((REMOTION_HOME / "node_modules" / ".remotion").glob("chrome-headless-shell/*")):
+                    break
+                time.sleep(2)
+            else:
+                raise
+        done = "installed"
+    env_save(node_lock=file_sha(NPM_LOCK), node=version(["node", "--version"]),
+             npm=version([npm, "--version"]))
+    print(f"Renderer {done} in {REMOTION_HOME}")
+    return done
+
+
+WARM_IMPORTS = "import cv2, numpy, onnxruntime, faster_whisper, PIL.Image"
+WARM_S = 600   # each warm-up command; a stuck one is stopped and the step says skipped
+
+
+def test_edit(t, secs, env=None):
+    """A planned test edit in t/test: a secs-second test clip with four caption words."""
+    edit = t / "test"
+    edit.mkdir()
+    quiet(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"testsrc2=s=540x960:r=30:d={secs}", "-f", "lavfi",
+           "-i", f"sine=f=220:d={secs}", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+           edit / "cut.mp4"], t, "making a test clip", timeout=WARM_S)
+    words = [{"text": w, "start": 0.2 + i * 0.4, "end": 0.5 + i * 0.4, "type": "word"}
+             for i, w in enumerate("getting your computer ready".split())]
+    (edit / "captions.json").write_text(json.dumps(words), encoding="utf-8")
+    py = VPY if VPY.exists() else Path(sys.executable)
+    quiet([py, EDITOR / "skills" / "style-edit" / "scripts" / "plan.py", edit / "style.json", edit / "captions.json",
+           "--no-sfx"], t, "planning a test edit", timeout=WARM_S, env=env)
+    return edit
+
+
+def step_warm(force=False, tick=None):
+    """The first edit's one-time costs, paid during setup so the first edit is as fast as the second: the first
+    load of OpenCV, onnxruntime and faster-whisper (a new library is slow to load once; face.py took 16.6 s on its
+    first run, 2.0 s after), and one test frame through the real renderer, which builds webpack's cache
+    (<renderer>/node_modules/.cache, about 640 MB) and starts the render browser for the first time. Optional:
+    a failure is said and left to the first edit, which then pays these costs as before."""
+    import tempfile
+    stamp = f"{env_load().get('node_lock')}|{VPY.exists()}"   # redo only when the renderer or the venv changes
+    if not force and env_load().get("warm") == stamp and (REMOTION_HOME / "node_modules" / ".cache").is_dir():
+        print("warm-up: up to date")
+        return "up to date"
+    py = VPY if VPY.exists() else Path(sys.executable)
+    sk = EDITOR / "skills" / "style-edit" / "scripts"
+    t = Path(tempfile.mkdtemp(prefix="ave-warm-"))
+    # Every temp file the renderer makes (its bundle, the browser profile, frames) goes inside t, so nothing is left
+    # behind even when the warm-up is stopped. The webpack cache (about 640 MB) stays: it is the point.
+    env = dict(os.environ, TMPDIR=str(t), TEMP=str(t), TMP=str(t))
+    try:
+        if VPY.exists():
+            if tick:
+                tick(0.05, "the Python libraries")
+            quiet([VPY, "-c", WARM_IMPORTS], None, "loading the Python libraries", timeout=WARM_S)
+        if tick:
+            tick(0.3, "a test frame")
+        edit = test_edit(t, 2, env)
+        quiet([py, sk / "edit.py", "stills", edit, "--at", "1", "--no-check"], t, "drawing a test frame",
+              timeout=WARM_S, env=env)
+    except (SystemExit, Exception) as e:   # noqa: BLE001  optional: a full disk or a stuck browser never fails setup
+        print(f"warm-up skipped, the first edit does it instead. {plain(e)}")
+        return "skipped"
+    finally:
+        shutil.rmtree(t, ignore_errors=True)
+    env_save(warm=stamp)
+    print("warmed up: the first edit pays no one-time costs")
+    return "done"
+
+
+def step_cutout(force=False, tick=None):
+    """The cutout model (15 MB) for cards behind the speaker, fetched with everything else so turning that on later
+    downloads nothing. Optional: a failed download is said and left to first use (shown on the page then)."""
+    fresh = not (models.DIR / MATTE).exists()
+
+    def hook(blocks, size, total):
+        if tick and total > 0:
+            tick(min(1, blocks * size / total), f"{min(blocks * size, total) // 10**6} of {total // 10**6} MB")
+    try:
+        models.fetch(MATTE, force, hook)
+    except (SystemExit, Exception) as e:   # noqa: BLE001
+        print(f"cutout model not downloaded, it downloads the first time cards go behind you. {plain(e)}")
+        return "left for first use"
+    env_save(models={**env_load().get("models", {}), MATTE: models.PINS[MATTE][1]})
+    return "installed" if fresh or force else "up to date"
+
+
+def bootstrap(force=False, matte=False):
+    """Everything, in order, safe to re-run: a second run downloads nothing and changes nothing."""
+    rows = checks()[:4]
+    for name, ok, detail, cmd in rows:
+        if not ok:
+            print(f"FIX  {name:<20} {detail}\n     run: {cmd}")
+    if not all(r[1] for r in rows):
+        print("Install the tools above first (they ask for a password or need a new terminal), "
+              "then run this again.")
+        return 1
+    steps = [("python packages", step_venv), ("transcription model", step_model), ("renderer", step_remotion),
+             ("motion clips", step_motion), ("warm-up", step_warm)]
+    if matte:
+        steps.append(("matting model", step_matte))
+    for i, (name, fn) in enumerate(steps, 1):
+        t = time.time()
+        print(f"[{i}/{len(steps)}] {name}", flush=True)
+        done = fn(force)
+        print(f"[{i}/{len(steps)}] {name}: {done} ({time.time() - t:.0f} s)", flush=True)
+    env_save(ffmpeg=version(["ffmpeg", "-version"]), git=version(["git", "--version"]))
+    return doctor()
+
+
+INSTALL_STEPS = [  # (doctor row, what the page says, step, share of the bar, the row it needs)
+    ("python packages", "Installing the Python packages", step_venv, 0.15, None),
+    ("transcription model", "Downloading the transcription model", step_model, 0.35, "python packages"),
+    ("renderer", "Installing the renderer", step_remotion, 0.12, None),
+    ("motion clips", "Installing the motion clip tools", step_motion, 0.03, None),
+    ("warm-up", "Warming up the editor, so your first video is as fast as the rest", step_warm, 0.30, "renderer"),
+    ("cutout model", "Downloading the cutout model, for cards behind you", step_cutout, 0.05, None),
+]
+_said = {"t": 0.0, "p": -1.0}
+
+
+def report_status(step=None, progress=None, detail=None, done=False, failed=None):
+    """One `home.py status setup` call: the page's "Getting your computer ready" bar. Progress alone is sent
+    at most once a second and only when it moved 1%. A page that is not running never stops the install."""
+    t = time.time()
+    if not (step or done or failed) and (t - _said["t"] < 1 or abs((progress or 0) - _said["p"]) < 0.01):
+        return
+    _said.update(t=t, p=_said["p"] if progress is None else progress)
+    cmd = [sys.executable, str(HOME_PY), "status", "setup"] + (["--step", step] if step else []) + \
+        (["--detail", detail] if detail else []) + (["--progress", f"{progress:.3f}"] if progress is not None else []) + \
+        (["--done"] if done else []) + (["--failed", failed] if failed else [])
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def plain(e):
+    """A step's failure as one sentence: its own sys.exit message, else what went wrong."""
+    msg = str(e.code) if isinstance(e, SystemExit) else f"{type(e).__name__}: {e}"
+    return msg.removeprefix("ERROR: ").split("\n")[-1].strip().replace("; its output is above.", ". Claude has the details.")
+
+
+def install_all(report=False, steps=INSTALL_STEPS, status=None, tools=lambda: checks()[:4]):
+    """Every missing install step in order, no questions. A failed step is said with its fix; steps that do not
+    need it still run (the renderer does not wait for the model). 0 when all done, 1 when something needs a fix."""
+    say = status or (report_status if report else lambda **k: None)
+    failed, base = {}, 0.0
+    for row, text, fn, share, needs in steps:
+        if needs in failed:
+            failed[row] = f"The {row} waits for the {needs}."
+        else:
+            say(step=text, progress=round(base, 3))
+            print(f"...  {row}", flush=True)
+            t = time.time()
+            try:
+                done = fn(tick=lambda frac, detail=None, b=base, s=share: say(progress=round(b + s * frac, 3), detail=detail))
+                print(f"ok   {row}: {done} ({time.time() - t:.0f} s)", flush=True)
+            except (SystemExit, Exception) as e:   # noqa: BLE001  keep going with what does not need it
+                failed[row] = plain(e)
+                print(f"FIX  {row}: {failed[row]} ({time.time() - t:.0f} s)", flush=True)
+        base += share
+    fixes = list(failed.values()) + [f"Install {name}: {cmd}" for name, ok, _, cmd in tools() if not ok]
+    if fixes:
+        say(failed=" ".join(dict.fromkeys(fixes)))
+        print("Not ready. " + " ".join(dict.fromkeys(fixes)))
+        return 1
+    say(progress=1.0, done=True)
+    print("Ready.")
+    return 0
+
+
+def repair():
+    """The exact pinned set again: a fresh venv, npm ci, every model re-verified."""
+    return bootstrap(force=True, matte=(models.DIR / "rvm_mobilenetv3_fp32.onnx").exists())
+
+
+def save_aws_key():
+    import getpass
+    key_id = input("AWS access key ID: ").strip()
+    secret = getpass.getpass("AWS secret access key (hidden): ").strip()
+    region = input("AWS region [us-east-1]: ").strip() or "us-east-1"
+    if not key_id.startswith(("AKIA", "ASIA")) or len(secret) < 30:
+        sys.exit("That does not look like an AWS access key. Nothing saved.")
+    HOME.mkdir(parents=True, exist_ok=True)
+    print(f"Saved to {write_aws_env(HOME / 'aws.env', key_id, secret, region)}")
+
+
+def write_aws_env(f, key_id, secret, region):
+    """aws.env, readable by this user only from the moment it exists (keys.write_private)."""
+    return keys.write_private(f, f"REMOTION_AWS_ACCESS_KEY_ID={key_id}\nREMOTION_AWS_SECRET_ACCESS_KEY={secret}\n"
+                                 f"REMOTION_AWS_REGION={region}\n")
+
+
+def check_lambda():
+    f = HOME / "aws.env"
+    if not f.exists():
+        sys.exit("No AWS keys yet. Run: setup.py awskey")
+    env = dict(os.environ)
+    for line in f.read_text(encoding="utf-8").splitlines():
+        k, _, v = line.partition("=")
+        if v:
+            env[k] = v
+    npx = shutil.which("npx")
+    r = subprocess.run([npx, "remotion", "lambda", "policies", "validate"], cwd=REMOTION_HOME, env=env)
+    return r.returncode
+
+
+def modal_exe():
+    return VENV / ("Scripts/modal.exe" if OS == "Windows" else "bin/modal")
+
+
+def modal_config():
+    """Where Modal's own CLI keeps the login (`modal setup` writes it; MODAL_CONFIG_PATH moves it)."""
+    return Path(os.environ.get("MODAL_CONFIG_PATH") or Path.home() / ".modal.toml")
+
+
+def modal_status():
+    """ready, no token, or missing. No network call: a token saved by `modal setup` counts."""
+    if not venv_has("modal"):
+        return "missing"
+    try:
+        token = "token_id" in modal_config().read_text(encoding="utf-8")
+    except OSError:
+        token = False
+    return "ready" if token or os.environ.get("MODAL_TOKEN_ID") else "no token"
+
+
+MODAL_LOGIN = re.compile(r"https://modal\.com/token-flow/[\w-]+")
+MODAL_LOGIN_S = 900     # the browser login: 15 minutes to sign up or log in
+MODAL_BUILD_S = 1500    # the first build of the render machine (a few minutes; 25 is a stuck build)
+
+
+def modal_error(text):
+    """Modal's output -> one plain sentence for each way the connect or a test render fails."""
+    t = text.lower()
+    if re.search(r"autherror|token not found|token missing|could not authenticate|unauthenticated|invalid token|token.*(revoked|expired)|modal token new", t):
+        return "Not logged in to Modal. Press Connect Modal to log in again."
+    if re.search(r"billing|spend limit|credit|payment|quota exceeded|workspace.*(disabled|suspended)", t):
+        return "Your Modal account is out of credit. Add a card at modal.com/settings or render on this computer."
+    if re.search(r"image build|build.*failed|failed to build|npm err", t):
+        return "The render machine did not build on Modal. Press Connect Modal to try again; laptop renders still work."
+    if re.search(r"connect|timed out|network|dns|ssl", t):
+        return "Could not reach Modal. Check the internet connection and try again."
+    last = next((x.strip() for x in reversed(text.strip().splitlines()) if x.strip()), "no output")
+    return f"Modal did not answer: {last[:200]}"
+
+
+def modal_credit():
+    """What this month has cost so far, from `modal billing summary`. None when Modal does not say."""
+    r = run([str(modal_exe()), "billing", "summary", "--json"], timeout=60)
+    try:
+        used = float(json.loads(r.stdout)["metered_cost"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    return f"${used:.2f} used this month (the free Starter plan includes $30)"
+
+
+def say(line):
+    print(line, flush=True)
+
+
+def connect_modal():
+    """The Connect Modal button (home.py runs it; the setup skill too). Installs Modal into the venv, runs
+    `modal setup` (it opens the browser; Modal's CLI keeps the token in its own file, never printed here), builds
+    the render machine once, then says the credit used. Lines: STEP <what>, LOGIN <url>, CREDIT <text>; the last
+    is `Connected.` or `FAIL <plain reason>`."""
+    if not VPY.exists():
+        say("FAIL Finish setting up the editor first, then connect Modal.")
+        return 1
+    if not venv_has("modal"):
+        say("STEP Installing Modal")
+        try:
+            pip_optional("modal")
+        except (subprocess.CalledProcessError, OSError):
+            say("FAIL Modal did not install. Check the internet connection and press Connect Modal again.")
+            return 1
+
+    def login():
+        say("STEP Log in to Modal in your browser")
+        try:
+            quiet([modal_exe(), "setup"], None, "the Modal login", timeout=MODAL_LOGIN_S,
+                  env=dict(os.environ, PYTHONUNBUFFERED="1", COLUMNS="400"),
+                  on_line=lambda ln: (m := MODAL_LOGIN.search(ln)) and say(f"LOGIN {m[0]}"))
+        except SystemExit:   # closed, timed out, or Modal said no: the old token file may still be there
+            return False
+        return modal_status() == "ready"
+
+    def build():
+        say("STEP Building the render machine on Modal (first time only, about 3 to 5 minutes)")
+        try:
+            r = run([str(VPY), str(EDITOR / "skills" / "style-edit" / "scripts" / "modal_render.py"), "hello"],
+                    timeout=MODAL_BUILD_S)
+        except subprocess.TimeoutExpired:
+            return "The render machine did not build on Modal in 25 minutes. Press Connect Modal to try again."
+        return None if r.returncode == 0 and "modal ok" in r.stdout else modal_error(r.stderr + r.stdout)
+    fresh = modal_status() != "ready"   # logs in during this run
+    if fresh and not login():
+        say("FAIL The Modal login did not finish. Press Connect Modal to try again.")
+        return 1
+    err = build()
+    if err and err.startswith("Not logged in") and not fresh:   # a saved login Modal no longer takes
+        if not login():
+            say("FAIL The Modal login did not finish. Press Connect Modal to try again.")
+            return 1
+        err = build()
+    if err:
+        say(f"FAIL {err}")
+        return 1
+    credit = modal_credit()
+    if credit:
+        say(f"CREDIT {credit}")
+    say("Connected.")
+    return 0
+
+
+def test_modal():
+    """The Test render button: a 5-second test edit rendered on Modal, timed. Lines: STEP, then
+    `TIME <seconds> <usd>` and `Tested.`, or `FAIL <plain reason>`."""
+    import tempfile
+    if modal_status() != "ready":
+        say("FAIL Not logged in to Modal. Press Connect Modal first.")
+        return 1
+    t = Path(tempfile.mkdtemp(prefix="ave-modal-test-"))
+    try:
+        say("STEP Making a 5-second test video")
+        try:
+            edit = test_edit(t, 5, dict(os.environ, TMPDIR=str(t), TEMP=str(t), TMP=str(t)))
+        except (SystemExit, Exception) as e:   # noqa: BLE001
+            say(f"FAIL The test video could not be made here: {plain(e)}")
+            return 1
+        say("STEP Rendering it on Modal")
+        t0 = time.time()
+        r = run([sys.executable, str(EDITOR / "skills" / "style-edit" / "scripts" / "edit.py"), "render", str(edit), "--modal"],
+                timeout=MODAL_BUILD_S)
+        secs = time.time() - t0
+        if r.returncode or not (edit / "render.mp4").exists():
+            say(f"FAIL {modal_error(r.stderr + r.stdout)}")
+            return 1
+        usd = re.search(r"about \$(\d+\.\d+) at Modal", r.stdout)
+        say(f"TIME {secs:.0f} {usd[1] if usd else ''}".rstrip())
+        say("Tested.")
+        return 0
+    except subprocess.TimeoutExpired:
+        say("FAIL The test render took over 25 minutes and was stopped.")
+        return 1
+    finally:
+        shutil.rmtree(t, ignore_errors=True)
+
+
+def step_matte(force=False):
+    """The Robust Video Matting model matte.py cuts the speaker out with, then a 10-frame test cut."""
+    if not VPY.exists():
+        sys.exit("Run the venv step first.")
+    rel = MATTE
+    fresh = not (models.DIR / rel).exists()
+    script = EDITOR / "skills" / "style-edit" / "scripts" / "matte.py"
+    subprocess.run([str(VPY), str(script), "fetch"], check=True)
+    env_save(models={**env_load().get("models", {}), rel: models.PINS[rel][1]})
+    r = run([str(VPY), str(script), "demo"])
+    if r.returncode:
+        sys.exit(f"matte.py demo failed:\n{r.stderr[-1500:]}")
+    print("Tested: cutting the speaker out works.")
+    return "installed" if fresh or force else "up to date"
+
+
+LAUNCHER = EDITOR / "lib" / "ai_editor" / "launcher.py"
+RC_LINE = 'export PATH="$HOME/.local/bin:$PATH"  # added by ai-editor setup.py install-launcher'
+from ai_editor.launcher import MARK, launcher_text  # noqa: E402  (home.py refreshes the installed file with it too)
+
+
+def bin_dirs(os_name=OS, path_env=None, home=None):
+    """(user-writable folders already on the PATH, the folder to make and add when none is)."""
+    home = Path(home or Path.home())
+    on_path = [Path(p) for p in (os.environ.get("PATH", "") if path_env is None else path_env).split(os.pathsep) if p]
+    if os_name == "Windows":   # on the PATH for every user, and theirs to write
+        cands = [Path(os.environ.get("LOCALAPPDATA", home / "AppData/Local")) / "Microsoft" / "WindowsApps"]
+    else:
+        cands = [home / ".local" / "bin", home / "bin", Path("/opt/homebrew/bin"), Path("/usr/local/bin")]
+    ok = [c for c in cands if c in on_path and c.is_dir() and os.access(c, os.W_OK)]
+    return ok, cands[0]
+
+
+def install_launcher(os_name=OS, path_env=None, home=None):
+    name = "ai-editor.cmd" if os_name == "Windows" else "ai-editor"
+    ok, fallback = bin_dirs(os_name, path_env, home)
+    d = ok[0] if ok else fallback
+    rc = None
+    if not ok and os_name != "Windows":   # ~/.local/bin is not on the PATH yet: add it in the shell's startup file
+        rc = Path(home or Path.home()) / (".zprofile" if "zsh" in os.environ.get("SHELL", "zsh") else ".bashrc")
+        text = rc.read_text(encoding="utf-8") if rc.exists() else ""
+        if RC_LINE not in text:
+            rc.write_text(text + ("" if text.endswith("\n") or not text else "\n") + RC_LINE + "\n", encoding="utf-8")
+    d.mkdir(parents=True, exist_ok=True)
+    f, want = d / name, launcher_text(os_name)
+    old = f.read_text(encoding="utf-8") if f.exists() else None
+    if old is not None and MARK not in old:
+        print(f"FIX  {f} is another program's file; not replaced")
+        return 1
+    if old != want:
+        with open(f, "w", encoding="utf-8", newline="") as fh:
+            fh.write(want)
+        f.chmod(0o755)
+    print(f"ok   ai-editor   {'already installed' if old == want else 'installed'} at {f}"
+          + (f"\n     open a new terminal first (the PATH line is in {rc})" if rc else ""))
+    return 0
+
+
+def uninstall_launcher(os_name=OS, path_env=None, home=None):
+    home = Path(home or Path.home())
+    ok, fallback = bin_dirs(os_name, path_env, home)
+    gone = []
+    for d in dict.fromkeys(ok + [fallback]):
+        for f in (d / "ai-editor", d / "ai-editor.cmd"):
+            if f.is_file() and MARK in f.read_text(encoding="utf-8", errors="ignore"):
+                f.unlink()
+                gone.append(str(f))
+    for rc in (home / ".zprofile", home / ".bashrc"):
+        if rc.exists() and RC_LINE in rc.read_text(encoding="utf-8"):
+            rc.write_text(rc.read_text(encoding="utf-8").replace(RC_LINE + "\n", "").replace(RC_LINE, ""), encoding="utf-8")
+            gone.append(f"the PATH line in {rc}")
+    print("removed " + ", ".join(gone) if gone else "ai-editor was not installed")
+    return 0
+
+
+def demo_launcher():
+    import tempfile
+    with tempfile.TemporaryDirectory() as t:
+        t = Path(t)
+        b = t / "bin"
+        b.mkdir()
+        assert install_launcher("Linux", str(b), t) == 0
+        f = b / "ai-editor"
+        assert MARK in f.read_text(encoding="utf-8") and str(LAUNCHER) in f.read_text(encoding="utf-8") and os.access(f, os.X_OK)
+        before = f.stat().st_mtime_ns
+        assert install_launcher("Linux", str(b), t) == 0 and f.stat().st_mtime_ns == before, "a second install changes nothing"
+        # run the launcher this computer would get: the .cmd on Windows (cmd /c), the sh script elsewhere
+        win = os.name == "nt"
+        run = (lambda p, *a: ["cmd", "/c", str(p), *a]) if win else (lambda p, *a: ["sh", str(p), *a])
+        real = b / "real.cmd" if win else f
+        if win:
+            with open(real, "w", encoding="utf-8", newline="") as fh:
+                fh.write(launcher_text("Windows"))
+        env = dict(os.environ, AI_EDITOR_HOME=str(t / "h"), AI_EDITOR_LIBRARY=str(t / "lib"))
+        r = subprocess.run(run(real, "--dry-run"), capture_output=True, text=True, env=env)
+        assert r.returncode == 0 and "/start open the home page" in r.stdout, (r.stdout, r.stderr)
+        moved = b / ("moved.cmd" if win else "moved")
+        with open(moved, "w", encoding="utf-8", newline="") as fh:
+            fh.write(real.read_text(encoding="utf-8").replace(str(LAUNCHER), str(t / "gone.py")))
+        r = subprocess.run(run(moved), capture_output=True, text=True)
+        assert r.returncode == 1 and r.stdout.strip() == "ai-editor moved, maybe an update. In Claude Code, say: set up the editor.", r.stdout
+        moved.unlink()
+        if win:
+            real.unlink()
+        assert uninstall_launcher("Linux", str(b), t) == 0 and not f.exists()
+        assert uninstall_launcher("Linux", str(b), t) == 0
+        f.write_text("#!/bin/sh\necho someone else's\n", encoding="utf-8")   # not ours: never replaced or removed
+        assert install_launcher("Linux", str(b), t) == 1
+        uninstall_launcher("Linux", str(b), t)
+        assert f.exists()
+        f.unlink()
+        # no user folder on the PATH: ~/.local/bin is made and one PATH line added, once; uninstall takes both away
+        os.environ["SHELL"] = "/bin/zsh"
+        (t / ".zprofile").write_text("export A=1\n", encoding="utf-8")
+        install_launcher("Darwin", "/usr/bin", t)
+        install_launcher("Darwin", "/usr/bin", t)
+        assert (t / ".local/bin/ai-editor").exists() and (t / ".zprofile").read_text(encoding="utf-8").count(RC_LINE) == 1
+        uninstall_launcher("Darwin", "/usr/bin", t)
+        assert not (t / ".local/bin/ai-editor").exists() and (t / ".zprofile").read_text(encoding="utf-8") == "export A=1\n"
+        w = launcher_text("Windows", Path("C:/x/launcher.py"), "C:/py/python.exe")
+        assert w.startswith("@echo off\r\n") and '"%PY%" "%L%" %*' in w and MARK in w
+
+
+def demo():
+    import contextlib
+    import io
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):     # a tool's chatter is kept back on success...
+        quiet([sys.executable, "-c", "print('added 369 packages in 3s')"], ".", "x")
+    assert out.getvalue() == "", out.getvalue()
+    with contextlib.redirect_stdout(out):     # ...and shown, with a plain reason, on failure
+        try:
+            quiet([sys.executable, "-c", "import sys; print('npm ERR! code E404'); sys.exit(1)"], ".", "npm ci")
+            raise AssertionError("no exit")
+        except SystemExit as e:
+            assert "npm ci failed" in str(e.code) and "E404" in out.getvalue(), (e.code, out.getvalue())
+    # a stuck tool is stopped with everything it started (a child holding the pipe), and said as a failure
+    t0 = time.time()
+    try:
+        quiet([sys.executable, "-c", "import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', "
+               "'import time; time.sleep(60)']); time.sleep(60)"], ".", "a stuck tool", timeout=1)
+        raise AssertionError("no exit")
+    except SystemExit as e:
+        assert "took over 1 s" in str(e.code) and time.time() - t0 < 30, (e.code, time.time() - t0)
+    miss = key_line("elevenlabs", "x", "local transcripts", None)
+    assert "add my elevenlabs key" in miss and "clipboard" in miss and "terminal" not in miss, miss
+    assert key_line("elevenlabs", "scribe", "x", "the ELEVENLABS_API_KEY variable").startswith("ok "), "found key row"
+    assert modal_status() in ("ready", "no token", "missing")
+    # Connect Modal: the login link is read from `modal setup`'s output; each failure is one plain sentence
+    assert MODAL_LOGIN.search("go to https://modal.com/token-flow/tf-AbC123xyz\n")[0] == "https://modal.com/token-flow/tf-AbC123xyz"
+    assert modal_error("modal.exception.AuthError: Token missing. Could not authenticate client.").startswith("Not logged in")
+    assert modal_error("modal.exception.AuthError: Token not found").startswith("Not logged in")
+    assert "out of credit" in modal_error("Workspace has reached its spend limit")
+    assert "did not build" in modal_error("modal.exception.RemoteError: Image build for im-12 failed. See build logs")
+    assert modal_error("weird\n  last thing\n") == "Modal did not answer: last thing"
+    assert major("v22.3.0") == 22 and major(None) == 0
+    assert fix("ffmpeg").split()[0] in ("brew", "winget", "sudo")
+    # Linux: the fix uses the package manager this computer has, not apt everywhere
+    has = lambda *exes: (lambda e: e in exes)   # noqa: E731
+    assert fix("ffmpeg", os_name="Linux", which=has("apt-get")) == "sudo apt install -y ffmpeg"
+    assert fix("ffmpeg", os_name="Linux", which=has("dnf")).startswith("sudo dnf install")
+    assert fix("node", os_name="Linux", which=has("pacman")) == "sudo pacman -S --needed --noconfirm nodejs npm"
+    # apt's Node fix adds NodeSource's signed apt source; no remote script is piped to a shell
+    apt_node = fix("node", os_name="Linux", which=has("apt-get"))
+    assert "signed-by=/etc/apt/keyrings/nodesource.gpg" in apt_node and "apt install -y nodejs" in apt_node, apt_node
+    assert not re.search(r"\|\s*(sudo\s+(-E\s+)?)?(ba)?sh\b", apt_node), apt_node
+    assert fix("ffmpeg", UPGRADE, os_name="Linux", which=has("dnf")).startswith("sudo dnf upgrade")
+    assert fix("python", os_name="Darwin", which=has("dnf")) == "brew install python"
+    # Chrome row: a Flatpak-only Chromium is said plainly, with the fix, not left as a silent miss
+    fp = browser_line(False, "ERROR: org.chromium.Chromium is installed as a Flatpak, which runs sandboxed ... sudo snap install chromium")
+    assert fp.startswith("-- ") and "Flatpak" in fp and "snap install chromium" in fp and "ERROR" not in fp, fp
+    assert browser_line(True, "/usr/bin/chromium").startswith("ok ")
+    # Free disk: FIX under 3 GB, with the reason
+    assert disk_row(5e9) == (True, "5.0 GB free")
+    room("the small transcription model", 484, free=5e9)   # says the size, goes on
+    try:   # 858 MB free: no 1.5 GB download
+        room("the medium transcription model", 1530, free=858e6)
+        raise AssertionError("downloaded into a full disk")
+    except SystemExit as e:
+        assert "about 1530 MB" in str(e) and "0.9 GB free" in str(e), e
+    ok, why = disk_row(2.9e9)
+    assert not ok and "need 3 GB" in why and "1.5 GB" in why and "0.5 MB a frame" in why, why
+    assert free_bytes() > 0
+    names = [r[0] for r in checks()]
+    assert names[:3] == ["python", "ffmpeg", "node"], names
+    global HOME, LATER
+    import tempfile
+    keep = HOME, LATER, profile.HOME
+    with tempfile.TemporaryDirectory() as d:
+        HOME, LATER = Path(d), Path(d) / "later.json"
+        profile.HOME = Path(d)       # a home whose profile has every style answer marks style done
+        later("style"); later("style")
+        assert later_load() == ["style"] and "style" in still_later()
+        LATER.write_text('["typesafe", "style"]', encoding="utf-8")   # saved by an older version
+        assert "typesafe" not in still_later() and "typesafe" not in todo()
+        LATER.write_text('["style"]', encoding="utf-8")
+        assert later("bogus") == 2 and later_load() == ["style"]   # an unknown step is refused, not saved
+    # finish setup after a bare bootstrap: every optional step is listed, none saved for later
+    assert todo({x: (lambda: False) for x in STEPS}) == list(STEPS) == [
+        "elevenlabs", "style", "modal", "matte"]
+    assert todo({x: (lambda x=x: x != "elevenlabs") for x in STEPS}) == ["elevenlabs"]
+    assert set(step_done()) == set(STEPS)
+    HOME, LATER, profile.HOME = keep
+    # Saved logins: one row each, with its age and the logout offer; a folder with no profile is not one
+    with tempfile.TemporaryDirectory() as d:
+        for name in ("example.com", "app.other.org"):
+            (Path(d) / "browser" / name / "Default").mkdir(parents=True)
+        (Path(d) / "browser" / "half-made").mkdir()
+        old = time.time() - 12 * 86400 - 60
+        os.utime(Path(d) / "browser" / "example.com" / "Default", (old, old))
+        got = [(n, a) for n, a, _ in saved_logins(d)]
+        assert got == [("app.other.org", 0), ("example.com", 12)], got
+        line = login_line("example.com", 12)
+        assert "12 days ago" in line and 'log me out of example.com' in line, line
+        assert "today" in login_line("app.other.org", 0)
+    assert saved_logins(Path(tempfile.gettempdir()) / "no-such-ave-home") == []
+    # aws.env is created 0600: with chmod doing nothing, the mode is still 0600
+    if OS != "Windows":
+        with tempfile.TemporaryDirectory() as d:
+            real, mask = os.chmod, os.umask(0)
+            os.chmod = lambda *a, **k: None
+            try:
+                f = write_aws_env(Path(d) / "aws.env", "AKIA" + "X" * 16, "s" * 40, "us-east-1")
+            finally:
+                os.chmod, _ = real, os.umask(mask)
+            assert f.stat().st_mode & 0o777 == 0o600, oct(f.stat().st_mode)
+    # Minimum versions, as each OS prints them.
+    assert ffmpeg_version("ffmpeg version 4.4.2-0ubuntu0.22.04.1 Copyright") == (4, 4) >= FFMPEG_MIN
+    assert ffmpeg_version("ffmpeg version 4.2.7-0ubuntu0.1") < FFMPEG_MIN
+    assert ffmpeg_version("ffmpeg version 7.1-full_build-www.gyan.dev") >= FFMPEG_MIN
+    assert ffmpeg_version("ffmpeg version n7.0.2") >= FFMPEG_MIN
+    assert ffmpeg_version("ffmpeg version N-118000-gabc") >= FFMPEG_MIN and ffmpeg_version(None) == (0, 0)
+    # The lock pins every package to one version with hashes; opencv-python never sneaks in.
+    lines = [x for x in LOCK.read_text(encoding="utf-8").splitlines() if x and not x.startswith((" ", "#"))]
+    assert lines and all("==" in x and x.endswith("\\") for x in lines), lines[:3]
+    assert not any(x.startswith("opencv-python==") for x in lines)
+    assert npm_version("remotion") == json.loads((REMOTION_SRC / "package.json").read_text(encoding="utf-8"))["dependencies"]["remotion"]
+    # Drift from the pins, fed a made-up env.json: each kind is caught, a clean match is not.
+    good = {"python_lock": file_sha(LOCK), "python_packages": {"numpy": "2.5.3", "yt-dlp": "2026.8.19"},
+            "node_lock": file_sha(NPM_LOCK), "models": {"yunet.onnx": models.PINS["yunet.onnx"][1]}}
+    have = {"numpy": "2.5.3", "yt-dlp": "2026.8.19", "pip": "26.2.1"}
+    remo = npm_version("remotion")
+    assert drift(good, have, remo) == {"python": [], "renderer": [], "model": []}
+    d = drift(good, {**have, "numpy": "1.26.4"}, remo)
+    assert d["python"] == ["numpy 1.26.4, pinned 2.5.3"], d
+    assert drift(good, {"numpy": "2.5.3"}, remo)["python"] == ["yt-dlp missing, pinned 2026.8.19"]
+    assert drift({**good, "python_lock": "old"}, have, remo)["python"][0].startswith("requirements.lock changed")
+    assert drift({}, have, None)["python"] == ["installed before version pins"]
+    # ...but an install that matches the lock is recorded, not sent to repair; a drifted one is not
+    from ai_editor import lock
+    exact = {norm(b["name"]): b["version"] for b in lock.blocks(LOCK.read_text(encoding="utf-8")) if not b["marker"]}
+    found = adopt({}, exact, remo)
+    assert found["python_packages"] == exact and found["node_lock"] == file_sha(NPM_LOCK), found
+    assert drift(found, exact, remo) == {"python": [], "renderer": [], "model": []}
+    assert adopt({}, {**exact, "yt-dlp": "2020.1.1"}, "4.0.1") == {}
+    assert "python_packages" not in adopt({}, {k: v for k, v in exact.items() if k != "yt-dlp"}, None)
+    assert adopt(good, exact, remo) == {}                    # already recorded: nothing to adopt
+    assert drift(good, {}, None) == {"python": [], "renderer": [], "model": []}   # nothing installed: no drift
+    assert drift({**good, "node_lock": "old"}, have, remo)["renderer"]
+    assert drift(good, have, "4.0.1")["renderer"] == [f"remotion 4.0.1, pinned {remo}"]
+    assert drift({**good, "models": {"yunet.onnx": "0" * 64}}, have, remo)["model"]
+    # env.json is rewritten only on change, so a second bootstrap leaves it byte-identical.
+    global ENV
+    keep_env = ENV
+    with tempfile.TemporaryDirectory() as d:
+        ENV = Path(d) / "env.json"
+        env_save(**good)
+        before = ENV.stat().st_mtime_ns
+        time.sleep(0.01)
+        env_save(**good)
+        assert ENV.stat().st_mtime_ns == before and env_load() == good
+    ENV = keep_env
+    ok, detail, cmd = certs_row(online=False)
+    assert ok and "trusted certificates" in detail and cmd, (ok, detail, cmd)
+    demo_launcher()
+    demo_install_all()
+    print("demo ok")
+
+
+def demo_install_all():
+    """install-all with stub steps: progress is each step's share of one bar, a failed step is said with its
+    fix, a step that needs it waits, the others still run; then the same calls reach a real home page state."""
+    import tempfile
+    said = []
+
+    def half(tick):
+        tick(0.5, "half")
+        return "installed"
+
+    def broken(tick):
+        sys.exit("npm missing. Install Node first: brew install node")
+    steps = [("a", "Doing A", half, 0.5, None), ("b", "Doing B", broken, 0.3, None),
+             ("c", "Doing C", half, 0.2, "b"), ("d", "Doing D", half, 0.0, None)]
+    assert install_all(steps=steps, status=lambda **k: said.append(k), tools=lambda: []) == 1
+    assert said[:3] == [{"step": "Doing A", "progress": 0.0}, {"progress": 0.25, "detail": "half"},
+                        {"step": "Doing B", "progress": 0.5}], said
+    assert said[-1] == {"failed": "npm missing. Install Node first: brew install node The c waits for the b."}, said[-1]
+    assert {"step": "Doing D", "progress": 1.0} in said and not any(k.get("step") == "Doing C" for k in said)
+    said.clear()
+    assert install_all(steps=steps[:1], status=lambda **k: said.append(k),
+                       tools=lambda: [("ffmpeg", False, "missing", "brew install ffmpeg")]) == 1
+    assert said[-1] == {"failed": "Install ffmpeg: brew install ffmpeg"}, said
+    said.clear()
+    assert install_all(steps=steps[:1], status=lambda **k: said.append(k), tools=lambda: []) == 0
+    assert said[-1] == {"progress": 1.0, "done": True}
+    with tempfile.TemporaryDirectory() as d:   # --report: the page's state gets the step, its progress, then done
+        keep = os.environ.get("AI_EDITOR_HOME")
+        os.environ["AI_EDITOR_HOME"] = d
+        try:
+            _said.update(t=0.0, p=-1.0)
+            assert install_all(report=True, steps=steps[:1], tools=lambda: []) == 0
+        finally:
+            os.environ.pop("AI_EDITOR_HOME") if keep is None else os.environ.__setitem__("AI_EDITOR_HOME", keep)
+        st = json.loads((Path(d) / "home" / "state.json").read_text(encoding="utf-8"))
+        job = [j for j in st["jobs"] if j["type"] == "setup"][-1]
+        assert job["state"] == "done" and [s["text"] for s in job["steps"]] == ["Doing A"], job
+        assert job["steps"][0]["progress"] == 1.0 and "rows" in st.get("doctor", {}), job
+    # The real steps: one bar (shares add to 1), warming waits for the renderer, the optional two never fail the install
+    assert abs(sum(x[3] for x in INSTALL_STEPS) - 1) < 1e-9 and [x[0] for x in INSTALL_STEPS] == [
+        "python packages", "transcription model", "renderer", "motion clips", "warm-up", "cutout model"], INSTALL_STEPS
+    assert set(motion_pins()) == {"hyperframes", "gsap"} and all(re.match(r"^\d+\.\d+\.\d+$", v) for v in motion_pins().values())
+    assert dict((x[0], x[4]) for x in INSTALL_STEPS)["warm-up"] == "renderer"
+    global quiet
+    real_quiet, real_fetch = quiet, models.fetch
+    try:
+        def no_renderer(*a, **k):
+            sys.exit("ERROR: drawing a test frame failed (exit 1); its output is above.")
+        quiet = no_renderer
+        assert step_warm() == "skipped"
+
+        def disk_full(*a, **k):
+            raise OSError(28, "No space left on device")
+        quiet = disk_full
+        import glob as g
+        before = set(g.glob(os.path.join(tempfile.gettempdir(), "ave-warm-*")))
+        assert step_warm() == "skipped" and set(g.glob(os.path.join(tempfile.gettempdir(), "ave-warm-*"))) == before
+        models.fetch = lambda *a, **k: sys.exit("ERROR: no connection")
+        with tempfile.TemporaryDirectory() as d:
+            keep_dir, models.DIR = models.DIR, Path(d)
+            try:
+                assert step_cutout() == "left for first use"
+            finally:
+                models.DIR = keep_dir
+    finally:
+        quiet, models.fetch = real_quiet, real_fetch
+
+
+if __name__ == "__main__":
+    cmds = {"doctor": doctor, "venv": step_venv, "model": step_model, "remotion": step_remotion,
+            "motion": step_motion, "bootstrap": bootstrap, "repair": repair, "awskey": save_aws_key,
+            "lambda": check_lambda, "modal": connect_modal, "modal-connect": connect_modal, "modal-check": connect_modal, "modal-test": test_modal, "matte": step_matte, "warm": step_warm,
+            "demo": demo, "keys": test_keys, "certs": step_certs, "todo": todo, "crisper": install_crisper,
+            "install-launcher": install_launcher, "uninstall-launcher": uninstall_launcher}
+    if sys.argv[1:] == ["doctor", "--quiet"]:
+        sys.exit(doctor_quiet())
+    if sys.argv[1:2] == ["install-all"] and set(sys.argv[2:]) <= {"--report"}:
+        sys.exit(install_all(report="--report" in sys.argv))
+    if sys.argv[1:] == ["bootstrap", "--matte"]:
+        sys.exit(bootstrap(matte=True))
+    if len(sys.argv) == 3 and sys.argv[1] == "later":
+        sys.exit(later(sys.argv[2]))
+    if len(sys.argv) == 3 and sys.argv[1] == "setkey":
+        sys.exit(set_key(sys.argv[2]))
+    if len(sys.argv) != 2 or sys.argv[1] not in cmds:
+        print(__doc__)
+        sys.exit(2)
+    r = cmds[sys.argv[1]]()
+    sys.exit(r if isinstance(r, int) else 0)   # steps return "installed" / "up to date"

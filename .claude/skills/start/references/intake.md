@@ -1,0 +1,75 @@
+---
+type: Reference
+title: "Intake questions"
+description: "The questions start step 2 asks, grouped into at most four per call, and the command that saves each answer."
+---
+
+# Intake questions
+
+The questions start step 2 asks, grouped into at most four per call, and the command that saves each
+answer. Ask only the ids `profile.py missing` printed. The first option of each is the one a beginner
+can accept as is: list it first and mark it "(Recommended)". Free text ("Other") is always allowed.
+
+The ids are `profile.py`'s two lists: the video questions (`audience`, `names`) and the style questions,
+asked once at the end of setup (start asks them only when setup was skipped). Start never asks the video
+questions: `profile.py defaults` saves their first options (or keeps the saved answers) and the review page
+says what was used; the user changes them by saying so. Keep these calls and their order.
+
+**This video (saved by `defaults`; set only when the user gives one)**
+
+| id | question | options |
+|---|---|---|
+| `audience` | Who is it for, and what should they do after watching? | free text, one line each. Default: "people curious about the topic" and "follow". Saves `audience` and `goal` in one `set` |
+| `names` | Which products, tools, websites or people will you name? | free text, comma separated (add a website for anything not famous). These get their real logos and real page captures |
+
+**Style call 1: what to copy (setup)**
+
+| id | question | options |
+|---|---|---|
+| `platform` | Where will this be posted? | TikTok, Reels or Shorts (vertical 9:16) / YouTube (wide 16:9) |
+| `creators` | Which creators' videos do you want yours to look like? Give 1-3 handles or links. | the creator they named in their message / I'll paste handles / no one: a clean editorial look |
+| `creators` (take) | What should we take from each? (multi-select, per creator when there are several) | everything / captions / pace and zooms / visuals and colours |
+| `liked_videos` | Any specific videos you love the edit of? Paste 1-5 links (any creator). | skip / I'll paste links |
+
+**Style call 2: what makes it yours (setup)**
+
+| id | question | options |
+|---|---|---|
+| `brand` | Colours and fonts for the graphics? | use the creator's look (no creator: the clean editorial look) / my brand colours (paste hex codes) and font / a logo file too (give the path) |
+| `assets_dir` | Do you have your own photos, screenshots or b-roll for this? | no, find real screenshots and logos / yes, this folder: (path) |
+| `avoid` | Anything you never want on screen? (multi-select) | emoji, stock photos, generic icons (all three on by default) / a colour (hex) / other (free text) |
+| `captions` | Captions? | like the creator (no creator: "plain white, TikTok Sans", saved the same way) / plain white, TikTok Sans (over a creator's too: `plain`) / bold, a few words at a time / karaoke, the line fills as you speak / minimal / no captions |
+
+**Style call 3: sound and layout (setup)**
+
+| id | question | options |
+|---|---|---|
+| `sound` | Sound effects and music? | subtle sound effects, music like the creator / sound effects, no music / no sound effects / sound effects and I'll add music myself |
+| `behind` | Let graphics sit behind you? (screenshots and logos tuck behind your head and shoulders) | Yes / No, keep them beside and above me |
+| `past_edit` | Have a raw take and the version you posted? I can learn how you cut. | No, use the default cut / Yes, I'll give both paths (run the taste skill's "Learn from a past edit", then save `true`) |
+
+Save each call's answers as soon as they come in, all in one command (values are JSON), for example
+`python3 "$P" set 'audience="developers who use Claude"' 'goal="follow"' 'names=[{"name": "Jev", "domain": "typesafe.ai"}]'`.
+Every argument is `key=value`; the `key value` form below takes one answer alone:
+
+```bash
+python3 "$P" set platform '"tiktok"'                      # tiktok | reels | shorts | youtube (sets aspect)
+python3 "$P" set creators '[{"handle": "somecreator", "take": ["captions", "pace", "visuals"]}]'
+python3 "$P" set liked_videos '["https://www.tiktok.com/@someone/video/123"]'
+python3 "$P" set audience '"developers who use Claude"'
+python3 "$P" set goal '"follow, then comment router for the guide"'   # saved with audience
+python3 "$P" set brand '{"use_creator": true}'           # or {"colors": ["#F2EEE6", "#E5482C"], "font": "Archivo", "logo": "/path/logo.svg"}
+python3 "$P" set assets_dir '"/Users/me/Pictures/screens"'
+python3 "$P" set names '[{"name": "Jev", "domain": "typesafe.ai"}, {"name": "Claude", "domain": "claude.com"}]'
+python3 "$P" set avoid '{"emoji": true, "stock": true, "icons": true, "colors": ["#7B61FF"]}'
+python3 "$P" set captions '{"on": true, "style": "creator"}'   # creator | plain | bold | karaoke | minimal; "on": false for none
+python3 "$P" set sound '{"sfx": true}'                  # music like the creator; '{"sfx": true, "music": false}' for none
+python3 "$P" set behind true                              # false: cards stay beside and above, no cutout step
+python3 "$P" set past_edit false                          # true once taste learn.py has run on their edit
+```
+
+If the user says "just edit it" or "use the defaults", run `python3 "$P" defaults` and go on. It
+saves every unanswered question as its default (vertical, no creator unless named, the
+editorial look, emoji, stock and icons avoided, the creator's captions, subtle sound, nothing
+behind, no past edit), so they are not asked again. Saving nothing left every style id missing and
+start asked them all again on the next video.
