@@ -228,12 +228,54 @@ Written by Claude from captions.json. One beat per visual, anchored to a word as
   (see plan.json below).
 - All: `nth`, `box`, `hold_s`, `entrance`, as in images.json.
 
+## project.json (the timeline the app and Claude both edit)
+
+`edits/<name>/project.json` (`lib/ai_editor/project_schema.py`) is made from plan.json by `project.py sync` and
+turned back into plan.json by `project.py export`; `to_plan(from_plan(plan)) == plan` for any plan plan.py writes.
+Times are integer frames at `fps`; ids (`itm_`, `trk_`, `ast_`, 8 base32 letters) never change.
+
+```json
+{"schema": "ai-editor/project@1", "id": "prj_x", "name": "my-take", "rev": 17, "fps": 30, "width": 1080, "height": 1920,
+ "durationInFrames": 1326, "format": "shorts", "formats": ["shorts", "youtube"], "designSystem": null,
+ "assets": {"ast_cut": {"kind": "video", "src": "cut.mp4", "origin": "cut"}},
+ "tracks": [
+  {"id": "trk_a", "kind": "video", "role": "main", "name": "Main", "muted": false, "hidden": false, "locked": false,
+   "items": [{"id": "itm_a1", "type": "video", "asset": "ast_cut", "from": 0, "durationInFrames": 1326, "trimIn": 0,
+              "origin": "plan", "pinned": false}]},
+  {"role": "cards", "items": [{"id": "itm_c3", "type": "card", "from": 372, "durationInFrames": 78,
+     "component": "chat", "props": {}, "src": "images/a.png", "box": {"units": "frame", "x": 10, "y": 12, "w": 80, "h": 40},
+     "entrance": "pop", "layout": "box", "anchor": {"word": "notion", "t": 12.4}, "sec": {"start": 12.4, "end": 15.0},
+     "extra": {"marks": []}, "origin": "plan", "pinned": false}]},
+  {"role": "zooms", "items": [{"type": "zoom", "props": {"scale": 1.18, "kind": "punch"}}]},
+  {"role": "captions", "props": {"style": {}}, "items": [{"type": "caption", "props": {"text": "...", "words": []}}]},
+  {"role": "music"}, {"role": "sfx"}, {"role": "broll"}, {"role": "generated"}],
+ "planExtras": {"layout": {}, "look": {}, "_present": ["video", "captions", "zooms", "cards"]},
+ "source": {"plan": "plan.json"}}
+```
+
+- `origin`: `plan` (plan.py made it), `user` (the app), `claude` (`project.py apply`). A user or Claude edit to a plan
+  item sets `pinned`; `sync` never moves, changes or drops a pinned item or one the user or Claude added. A re-planned
+  card keeps its id when its anchor (trigger word, start) is within 0.75 s; a zoom within 0.4 s.
+- `sec`: the plan's own seconds, exported unchanged while the item still sits on those frames.
+- `extra` / `planExtras`: plan keys the timeline does not model, passed through untouched.
+- `box.units`: `frame` (% of the frame, as plan.json) or `safe` (% of the format's safe zone, reflowed per
+  format on export); `boxByFormat` overrides it per format id.
+- More than one clip on the main track, or a trimmed one, exports `clips: [{src, from, durationInFrames, trimIn}]`
+  beside `video`; broll and generated tracks export `broll` / `generated` lists (seconds).
+
+Edits are op batches (`lib/ai_editor/project_store.py`): `add | move | trim | split | delete | update | addTrack |
+deleteTrack | setProject | addAsset | deleteAsset`, applied whole or not at all, each logged with its inverse in
+`project.log.jsonl` (undo / redo per author). A batch on an older `baseRev` is rebased when every id it names
+still exists, else refused (409). `propose` writes `proposals/<id>.json` for the user to accept or reject in the app.
+`project.export.json` holds the sha256 of each plan file `export` wrote, so `sync` skips its own output.
+
 ## plan.json (style-edit -> Remotion)
 
 ```json
 {
   "video": "cut.mp4",
   "width": 1080, "height": 1920, "fps": 30, "durationInFrames": 1800,
+  "format": "shorts",
   "captions": {"style": {"...": "style.json captions block"},
                "chunks": [{"text": "this is how", "start": 0.1, "end": 0.9,
                            "words": [{"text": "this", "start": 0.1, "end": 0.3}]}]},
@@ -244,6 +286,10 @@ Written by Claude from captions.json. One beat per visual, anchored to a word as
              "trigger_word": "faster", "entrance": "pop", "box": [12, 4, 76, 22]}]
 }
 ```
+
+`format` is optional: a `.claude/remotion/src/formats.json` id (`plan.py --format`). It sets the canvas, the safe zone
+`check.py` and the renderer hold cards to, and the export `render.mjs` encodes; absent, the plan uses the legacy zone
+of its shape (`vertical` for 9:16, `youtube` for 16:9) and the encode it always had.
 
 A caption chunk may carry `treat` (`"shadow"` | `"glow"` | `"stroke"` | `"backing"`) and `treat_color`: plan.py measured the
 cut behind that page (at the caption box, through the zooms) and the creator's look would read under 3:1 there,
@@ -355,38 +401,36 @@ volume 1; its level is baked into the file. Empty when style.json has `"sfx": fa
 
 Times in seconds on cut.mp4's timeline. `box` is `[x, y, w, h]` in percent of the frame. Caption `size_pct` is measured on the frame's long side, so it reads the same in 9:16 and 16:9.
 
-## github-render (edit.py render --github -> GitHub Actions)
+## github-render (edit.py render --github -> GitHub Actions, encrypted)
 
 ```
+.github/workflows/render.yml     workflow_dispatch inputs render_id (12 hex), frames, fps, format;
+                                 run-name "render <render_id>"; three jobs:
+                                   plan: chunks.py FRAMES FPS -> chunks [{"i": "00", "from": 0, "to": 3599}, ...]
+                                     (about 120 s of video each, 1-20 chunks)
+                                   render (matrix, one job per chunk): npm ci in .claude/remotion, remotion
+                                     browser ensure, install-age.sh (pinned, sha256), gh release download
+                                     render-<id> payload.part-*, cat | age -d (RENDER_KEY) | tar -x into work/,
+                                     node .claude/remotion/render.mjs chunk work/bundle work/plan.json
+                                     out/chunk-NN.mkv FROM TO, age -r RENDER_RECIPIENT, upload-artifact
+                                     "chunk-<id>-NN" (1 day)
+                                   join: download, decrypt, join.py -> out/render.mp4, encrypt, upload-artifact
+                                     "render-<id>" (1 day), delete the chunk artifacts
+.github/scripts/chunks.py        chunk_ranges() (edit.py imports it for the estimate)
+.github/scripts/join.py          the audio-exact join (edit.py reads it as JOIN for the laptop and Modal)
+.github/scripts/install-age.sh   age on the runner, the same pin as lib/ai_editor/ghrender.py AGE_PINS
+
+draft release render-<id>        payload.part-00, -01, ...: age(tar(bundle/ plan.json meta.json)), 1.9 GB parts
 edits/<name>/
-  github-render/              a git repo, pushed to the user's PRIVATE GitHub repo. No footage.
-    .github/workflows/render.yml   workflow_dispatch, three jobs:
-                                   plan: chunk_ranges() over plan.json -> outputs chunks
-                                     [{"i": "00", "from": 0, "to": 3599}, ...] (about 120 s of
-                                     video each, 1-20 chunks) and fps
-                                   render (matrix, one job per chunk): npm ci, remotion browser
-                                     ensure, gh release download media (cat the .part-* files when
-                                     present), unzip into public/, node render.mjs chunk public
-                                     plan.json out/chunk-NN.mkv FROM TO, upload-artifact "chunk-NN" (1 day)
-                                   join: download chunk-*, cut each chunk's PCM audio to exactly its
-                                     frames, ffmpeg concat the video (-c copy) + the audio (AAC once)
-                                     -> out/render.mp4, upload-artifact "render" (7 days), delete
-                                     the chunk artifacts
-    src/ package.json render.mjs tsconfig.json   the renderer, copied from `.claude/remotion`
-    package-lock.json         from ~/.ai-video-editor/remotion when present (npm ci), else npm install
-    plan.json                 the plan (any plan-XYZ.json is written here as plan.json)
-    .gitignore README.md
-  github-render-media.zip     .render/ zipped (cut at output size, images/, .sfx/): the release
-                              asset of the "media" release in that repo. Over 1.9 GB it is written as
-                              github-render-media.zip.part-00, -01, ... instead (one asset each)
-  github.json                 {"repo", "started"}: the run github-fetch waits for
-  render-github.mp4           written by edit.py github-fetch
+  github.json                    {"repo", "render_id", "release", "started", "format"}: what github-fetch waits for
+  render-github.mp4              written by edit.py github-fetch (or render --github)
+~/.ai-video-editor/render-key.txt   the age identity (0600); its public half is the repo variable RENDER_RECIPIENT
 ```
 
-`node render.mjs chunk <publicDir> <plan.json> <out.mkv> <from> <to>` renders frames from..to
+`node render.mjs chunk <publicDir|bundleDir> <plan.json> <out.mkv> <from> <to>` renders frames from..to
 (inclusive) as h264 with PCM audio, so pieces join without an AAC gap.
 
-A plan named plan-XYZ.json uses `github-render-XYZ/`, `github-render-XYZ-media.zip`, `render-github-XYZ.mp4`.
+A plan named plan-XYZ.json writes `githubXYZ.json` and `render-githubXYZ.mp4`.
 
 ## taste (the user -> every skill)
 

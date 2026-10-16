@@ -1,0 +1,100 @@
+{
+  "_about": "Generation models the editor may call. Every id, input and limit the code uses lives here; the generate skill reads `gen.py models`. Checked against docs.higgsfield.ai (openapi.json v2.0.0 and the model pages) on 2026-10-17; prices come from the estimate endpoint at run time, never from this file.",
+  "providers": {
+    "higgsfield": {
+      "name": "Higgsfield",
+      "base_url": "https://api.higgsfield.ai",
+      "console": "https://console.higgsfield.ai",
+      "docs": "https://docs.higgsfield.ai/docs",
+      "upload_types": ["video/mp4", "image/jpeg", "image/png", "image/webp", "image/gif", "audio/wav"],
+      "concurrency_note": "Concurrency depends on the account; over it the API answers 400 'Maximum number of concurrent requests'.",
+      "retention_days": 7
+    }
+  },
+  "models": {
+    "higgsfield/genjutsu/motion-transfer/v1.0": {
+      "provider": "higgsfield",
+      "name": "Genjutsu motion transfer",
+      "kind": "video-to-video",
+      "use": "Puts the motion of a clip of the user's footage onto 1-8 reference images (a character, a product, a styled version of them).",
+      "inputs": {
+        "video_url": {"from": "video", "required": true},
+        "image_urls": {"from": "images", "required": true, "min": 1, "max": 8},
+        "prompt": {"from": "prompt", "required": false, "max_chars": 10000}
+      },
+      "params": {"resolution": {"enum": ["480p", "720p", "1080p"], "default": "720p"}},
+      "limits": {"min_input_s": 4, "max_input_s": 30},
+      "output": "video",
+      "source": "https://docs.higgsfield.ai/docs/models/genjutsu/motion-transfer"
+    },
+    "kling-video/v2.5-turbo/pro/text-to-video": {
+      "provider": "higgsfield",
+      "name": "Kling 2.5 Turbo Pro, text to video",
+      "kind": "text-to-video",
+      "use": "B-roll from a sentence: a shot the user did not film.",
+      "inputs": {"prompt": {"from": "prompt", "required": true}, "negative_prompt": {"from": "negative_prompt", "required": false}},
+      "params": {"duration": {"enum": [5, 10], "default": 5}, "cfg_scale": {"min": 0, "max": 1, "default": 0.5}},
+      "limits": {},
+      "output": "video",
+      "source": "https://docs.higgsfield.ai/docs/openapi.json"
+    },
+    "kling-video/v2.5-turbo/pro/image-to-video": {
+      "provider": "higgsfield",
+      "name": "Kling 2.5 Turbo Pro, image to video",
+      "kind": "image-to-video",
+      "use": "Animates a still (a frame of the user's video, a product photo, a screenshot) into a short shot.",
+      "inputs": {"prompt": {"from": "prompt", "required": true}, "image_url": {"from": "image", "required": true},
+                 "negative_prompt": {"from": "negative_prompt", "required": false}},
+      "params": {"duration": {"enum": [5, 10], "default": 5}, "cfg_scale": {"min": 0, "max": 1, "default": 0.5}},
+      "limits": {},
+      "output": "video",
+      "source": "https://docs.higgsfield.ai/docs/openapi.json"
+    },
+    "kling-video/v2.5-turbo/standard/image-to-video": {
+      "provider": "higgsfield",
+      "name": "Kling 2.5 Turbo Standard, image to video",
+      "kind": "image-to-video",
+      "use": "The cheaper image-to-video: drafts and quick b-roll.",
+      "inputs": {"prompt": {"from": "prompt", "required": true}, "image_url": {"from": "image", "required": true},
+                 "negative_prompt": {"from": "negative_prompt", "required": false}},
+      "params": {"duration": {"enum": [5, 10], "default": 5}, "cfg_scale": {"min": 0, "max": 1, "default": 0.5}},
+      "limits": {},
+      "output": "video",
+      "source": "https://docs.higgsfield.ai/docs/openapi.json"
+    },
+    "minimax/hailuo-2.3/standard/text-to-video": {
+      "provider": "higgsfield",
+      "name": "Hailuo 2.3 Standard, text to video",
+      "kind": "text-to-video",
+      "use": "B-roll from a sentence, 6 or 10 s.",
+      "inputs": {"prompt": {"from": "prompt", "required": true}},
+      "params": {"duration": {"enum": [6, 10], "default": 6}, "prompt_optimizer": {"enum": [true, false], "default": true}},
+      "limits": {},
+      "output": "video",
+      "source": "https://docs.higgsfield.ai/docs/openapi.json"
+    },
+    "minimax/hailuo-2.3/standard/image-to-video": {
+      "provider": "higgsfield",
+      "name": "Hailuo 2.3 Standard, image to video",
+      "kind": "image-to-video",
+      "use": "Animates a still, 6 or 10 s.",
+      "inputs": {"prompt": {"from": "prompt", "required": true}, "image_url": {"from": "image", "required": true}},
+      "params": {"duration": {"enum": [6, 10], "default": 6}, "prompt_optimizer": {"enum": [true, false], "default": true}},
+      "limits": {},
+      "output": "video",
+      "source": "https://docs.higgsfield.ai/docs/openapi.json"
+    },
+    "higgsfield-ai/soul/standard": {
+      "provider": "higgsfield",
+      "name": "Soul, text to image",
+      "kind": "text-to-image",
+      "use": "A still for a card or as the first frame of an image-to-video shot.",
+      "inputs": {"prompt": {"from": "prompt", "required": true}},
+      "params": {"num_images": {"min": 1, "max": 4, "default": 1}, "resolution": {"enum": ["2K", "4K"], "default": "2K"},
+                 "aspect_ratio": {"enum": ["1:1", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "16:9", "9:16", "21:9"], "default": "9:16"}},
+      "limits": {},
+      "output": "image",
+      "source": "https://docs.higgsfield.ai/docs/openapi.json"
+    }
+  }
+}

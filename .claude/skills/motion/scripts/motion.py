@@ -33,6 +33,10 @@ HERE = Path(__file__).resolve().parent
 SKILL = HERE.parent
 PLUGIN = SKILL.parents[1]
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parents[2] / "lib"))
+from ai_editor import formats as fmts  # noqa: E402  remotion/src/formats.json
+
+SAFE_TOP = fmts.safe_pct("vertical")[1]   # % down where a vertical frame's safe zone starts (plan.py SAFE["9:16"])
 
 HF_VERSION = "0.8.155"     # setup.py installs exactly this (MOTION_PKGS); 0.7.x had other flags
 GSAP_VERSION = "3.14.2"
@@ -228,7 +232,7 @@ def card_size(face, start, end, aspect="9:16"):
     tops = [h["box"][1] for h in face["heads"] if h.get("box") and start - 0.5 <= h["t"] <= end]
     if not tops:
         return list(SIZE["9:16"])
-    band = max(8.0, (min(tops) - 13.1 - 2.0) / 0.8) / 100 * 1920 * 0.92   # px the picture gets (FILL)
+    band = max(8.0, (min(tops) - SAFE_TOP - 2.0) / 0.8) / 100 * 1920 * 0.92   # px the picture gets (FILL)
     ar = max(1.6, min(3.0, 0.74 * 1080 * 0.96 / band))
     return [1200, int(round(1200 / ar / 2)) * 2]
 
@@ -240,7 +244,7 @@ def panel_size(style):
     if lay.get("mode") != "split":
         return None
     seam = float(lay.get("seam", 50))
-    w_px, h_px = 0.74 * 1080, (seam - 2 - 13.1) / 100 * 1920
+    w_px, h_px = 0.74 * 1080, (seam - 2 - SAFE_TOP) / 100 * 1920
     return [1200, int(round(1200 * h_px / w_px / 2)) * 2]
 
 
@@ -603,14 +607,27 @@ def status(edit):
         print(f"{b['id']:<22} {st}")
 
 
+def fmts_box(fid):
+    """ffmpeg drawbox filters for a format's safe zone (red) and keep-outs (orange), scaled to any frame size."""
+    W, H = fmts.size(fid)
+    s = fmts.safe_px(fid)
+    out = (f",drawbox=x=iw*{s['left']}/{W}:y=ih*{s['top']}/{H}:w=iw*{W - s['left'] - s['right']}/{W}"
+           f":h=ih*{H - s['top'] - s['bottom']}/{H}:color=red@0.9:t=3")
+    for k in fmts.keepouts(fid):
+        out += f",drawbox=x=iw*{k['x']}/{W}:y=ih*{k['y']}/{H}:w=iw*{k['w']}/{W}:h=ih*{k['h']}/{H}:color=orange@0.8:t=3"
+    return out
+
+
 def strips(video, times, out, before=0.4, after=1.1, fps=10, safe=False, width=240):
     """One row per time: consecutive frames at `fps` from t-before to t+after. With safe, the reels safe zone
-    (x 60-940, y 250-1440 of 1080x1920) is drawn on every frame."""
+    (x 60-940, y 250-1440 of 1080x1920) is drawn on every frame; safe="<format id>" draws that format's zone
+    (formats.json) and its keep-outs instead."""
     tmp = Path(tempfile.mkdtemp(prefix="strips-"))
     try:
         rows = []
         n = int(round((before + after) * fps)) + 1
-        box = ",drawbox=x=iw*60/1080:y=ih*250/1920:w=iw*880/1080:h=ih*1190/1920:color=red@0.9:t=3" if safe else ""
+        box = (fmts_box(safe) if isinstance(safe, str) else
+               ",drawbox=x=iw*60/1080:y=ih*250/1920:w=iw*880/1080:h=ih*1190/1920:color=red@0.9:t=3" if safe else "")
         for k, t in enumerate(times):
             row = tmp / f"row{k}.png"
             run(["ffmpeg", "-v", "error", "-y", "-ss", f"{max(0.0, t - before):.3f}", "-t", f"{before + after + 0.5 / fps:.3f}",

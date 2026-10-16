@@ -1901,6 +1901,10 @@ def make_handler(token):
             path = unquote(urlsplit(self.path).path)
             if askhook.route(self, "GET", path, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}):   # Claude's questions
                 return
+            if path.startswith("/api/"):   # the app's projects: app_api.py
+                import app_api
+                q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query, keep_blank_values=True).items()}
+                return app_api.route(self, "GET", path, q) or self.send(404, {"error": "no such api"})
             if path == "/":
                 return self.send(200, themed(HTML.read_bytes()), "text/html; charset=utf-8", cookie=True)
             if path == "/state":
@@ -2077,6 +2081,10 @@ def make_handler(token):
                 return self.send(400, {"error": "not json"})
             if askhook.route(self, "POST", path, {}, body):
                 return
+            if path.startswith("/api/"):   # the app's commands: app_api.py (same token and same-origin checks as above)
+                import app_api
+                q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query, keep_blank_values=True).items()}
+                return app_api.route(self, "POST", path, q, body) or self.send(404, {"error": "no such api"})
             if path == "/theme":   # the toggle: one choice for the window and every review page (review.py)
                 try:
                     set_theme(body.get("theme"))
@@ -3861,6 +3869,12 @@ def demo():
     assert is_output(ed / "anything.mp4", [ed]) and not is_output(root / "videos" / "drop.mp4", [ed])
     assert all("raw" in v for v in get("/recent")["videos"])
     assert get("/state")["page"] == live.page_version(HTML, HTML.with_name("ask.js")), "the tab's reload key"
+    assert isinstance(get("/api/projects")["projects"], list), "the app's API is mounted behind the same token"
+    try:
+        get("/api/project?edit=nowhere")
+        raise AssertionError("an unknown edit is a 404")
+    except urllib.error.HTTPError as e:
+        assert e.code == 404
     # hide or trash a listed clip, remove an edit: only what the page listed, to the Trash (faked here), never a folder
     assert library.trash_cmd("/a b/x.mov", "Darwin")[-1] == "/a b/x.mov" and "item 1 of argv" in " ".join(library.trash_cmd("x", "Darwin"))
     assert library.trash_cmd("C:/x y.mp4", "Windows")[-1] == "C:/x y.mp4" and library.trash_cmd("/x", "Linux") == ["gio", "trash", "/x"]

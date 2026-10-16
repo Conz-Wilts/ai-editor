@@ -111,10 +111,11 @@ Find the speaker's head first, so no box covers the face, then plan with step 1'
 
 ```bash
 python3 "$VPY" "$S/face.py" edits/<name>
-python3 "$S/plan.py" edits/<name>/style.json edits/<name>/captions.json [--aspect 9:16|16:9] [--layout overlay|split|letterbox]
+python3 "$S/plan.py" edits/<name>/style.json edits/<name>/captions.json [--aspect 9:16|16:9 | --format shorts|tiktok|reels|youtube|...] [--layout overlay|split|letterbox]
 ```
 
-Writes `edits/<name>/plan.json`. Read every warning. It ends with the **style check** (`style_check.py`):
+Writes `edits/<name>/plan.json`. Then `python3 "$S/project.py" sync edits/<name>` after every plan.py run: it
+merges the plan into `project.json`, the timeline the app shows, keeping what the user moved there. Read every warning. It ends with the **style check** (`style_check.py`):
 each `style:` line is a way the plan differs from the creator. Fix each (style.json, visuals.json,
 images.json) and plan again before the stills; what the user changed is already the target.
 
@@ -161,8 +162,8 @@ with the time ("Rendering on your laptop, about 14 s. Say 'render on Modal' to c
 2. **Modal**: its time and cost ($30 free credit a month). Not connected: label it **Connect Modal**; on that
    pick run `setup.py modal-connect` in the background (the setup skill's Modal step), then render on Modal.
 3. **Other: GitHub Actions or AWS Lambda**: both `Other:` lines in the description. On this pick, ask
-   a second question with the two. GitHub Actions: free, needs `gh` logged in, the footage goes into
-   a **private** repo in their account; ask before creating the repo. Lambda: their own AWS account.
+   a second question with the two. GitHub Actions: free, needs `gh` logged in, renders in this editor's
+   public repo with the footage encrypted; ask before the first one (it runs `setup.py gh-render-key`). Lambda: their own AWS account.
    No `cloud_cleanup` in the profile: ask once "Delete the uploaded footage from <GitHub|AWS> after
    rendering?" (Yes (Recommended) / No, keep it there), then `profile.py set cloud_cleanup=true|false`.
 
@@ -171,6 +172,9 @@ Modal picked but not connected: `setup.py modal-connect` first (above). Lambda p
 
 ## 7. Render and check
 
+First `python3 "$S/project.py" export edits/<name>` (add `--format youtube --format shorts` for one plan per
+format, then `--plan plan-<format>.json` on each render): the app's edits go into the plan the render reads.
+
 ```bash
 python3 "$S/edit.py" render edits/<name>            # laptop
 python3 "$S/edit.py" render edits/<name> --modal    # Modal
@@ -178,8 +182,8 @@ python3 "$S/edit.py" render edits/<name> --lambda   # AWS Lambda
 python3 "$S/edit.py" render edits/<name> --draft    # laptop, 2/3 size, quick look: render-draft.mp4
 ```
 
-All but `--draft` write `edits/<name>/render.mp4`. GitHub Actions (`--github`, then `github-push`
-and `github-fetch`) and every target's detail: `references/render.md`. Then, before the user sees it:
+All but `--draft` write `edits/<name>/render.mp4`. GitHub Actions (`--github`: encrypted, start to
+download in one command) and every target's detail: `references/render.md`. Then, before the user sees it:
 
 ```bash
 python3 "$VPY" "$S/check.py" render edits/<name> [--plan plan.json] [--style edits/<name>/style.json]
@@ -233,7 +237,7 @@ Which file to open, YouTube chapters for 16:9: `references/render.md` "Export to
 | `no Chrome Headless Shell` (capture.mjs) | `python3 "${CLAUDE_SKILL_DIR}/../../skills/setup/scripts/setup.py" remotion`, then capture again |
 | capture.mjs `failed <kind> '<word>'` | drop that visual or give it another URL; the rest were saved |
 | `Modal is not set up on this computer` | the setup skill's Modal step |
-| `the GitHub CLI (gh) is missing` / `... is public` | setup's GitHub CLI section / a private repo only |
+| `the GitHub CLI (gh) is missing` / `no render key yet` | setup's GitHub CLI section / `setup.py gh-render-key` |
 | `the laptop render failed` | `references/render.md` "If a render stops" |
 | `the Modal render failed` / `the render failed. Open <url>` | say so, offer the laptop render |
 

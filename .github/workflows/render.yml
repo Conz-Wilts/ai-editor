@@ -1,0 +1,172 @@
+# Renders one edit on GitHub Actions. Started by ghrender.py (edit.py render --github), never by hand.
+#
+# The repo is public, so nothing readable leaves the runner: the footage arrives as an age-encrypted draft
+# release (render-<id>), each chunk and the final video go up as age-encrypted artifacts (1 day), and the
+# only name anywhere is the random render id. RENDER_KEY (secret) decrypts; RENDER_RECIPIENT (variable)
+# encrypts. Only people with write access can start it; pull requests from forks never get the secret.
+name: render
+run-name: render ${{ inputs.render_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      render_id:
+        description: Random id of this render (ghrender.py)
+        required: true
+        type: string
+      frames:
+        description: Frames to render
+        required: true
+        type: string
+      fps:
+        description: Frames per second
+        required: true
+        type: string
+      format:
+        description: Output format id (lib/ai_editor/formats.py)
+        required: false
+        type: string
+        default: ""
+      audio_rate:
+        description: The format's audio sample rate (44100 or 48000)
+        required: false
+        type: string
+        default: "48000"
+      audio_bitrate:
+        description: The format's AAC bitrate (e.g. 320k)
+        required: false
+        type: string
+        default: "320k"
+permissions:
+  contents: write   # the draft release with the footage is readable only with push access
+  actions: write    # delete the chunk artifacts once joined
+concurrency:
+  group: render-${{ inputs.render_id }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      chunks: ${{ steps.split.outputs.chunks }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - id: split
+        env:
+          RID: ${{ inputs.render_id }}
+          FRAMES: ${{ inputs.frames }}
+          FPS: ${{ inputs.fps }}
+        run: |
+          [[ "$RID" =~ ^[a-f0-9]{12}$ ]] || { echo "bad render id"; exit 1; }
+          python3 .github/scripts/chunks.py "$FRAMES" "$FPS" >> "$GITHUB_OUTPUT"
+
+  render:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: true
+      matrix:
+        chunk: ${{ fromJSON(needs.plan.outputs.chunks) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .claude/remotion
+            .github
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: .claude/remotion/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: .claude/remotion
+      - uses: actions/cache@v4
+        with:
+          path: .claude/remotion/node_modules/.remotion
+          key: remotion-browser-${{ runner.os }}-${{ hashFiles('.claude/remotion/package-lock.json') }}
+      - run: npx remotion browser ensure
+        working-directory: .claude/remotion
+      - run: bash .github/scripts/install-age.sh
+      - name: Footage (decrypted on the runner only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RID: ${{ inputs.render_id }}
+          RENDER_KEY: ${{ secrets.RENDER_KEY }}
+        run: |
+          [ -n "$RENDER_KEY" ] || { echo "RENDER_KEY secret is not set (setup.py gh-render-key)"; exit 1; }
+          mkdir -p payload work
+          gh release download "render-$RID" -R "$GITHUB_REPOSITORY" -p 'payload.part-*' -D payload
+          cat payload/payload.part-* | age -d -i <(printf '%s\n' "$RENDER_KEY") | tar -x -C work
+          rm -rf payload
+      - name: Render
+        env:
+          I: ${{ matrix.chunk.i }}
+          FROM: ${{ matrix.chunk.from }}
+          TO: ${{ matrix.chunk.to }}
+        run: |
+          mkdir -p out
+          node .claude/remotion/render.mjs chunk work/bundle work/plan.json "out/chunk-$I.mkv" "$FROM" "$TO" > render.log 2>&1 \
+            || { grep -iE "error|failed" render.log | grep -v "work/" | tail -5; exit 1; }
+      - name: Encrypt the chunk
+        env:
+          I: ${{ matrix.chunk.i }}
+          RENDER_RECIPIENT: ${{ vars.RENDER_RECIPIENT }}
+        run: |
+          age -r "$RENDER_RECIPIENT" -o "out/chunk-$I.mkv.age" "out/chunk-$I.mkv"
+          rm -rf "out/chunk-$I.mkv" work render.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chunk-${{ inputs.render_id }}-${{ matrix.chunk.i }}
+          path: out/chunk-${{ matrix.chunk.i }}.mkv.age
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+  join:
+    needs: [plan, render]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - run: bash .github/scripts/install-age.sh
+      - run: command -v ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: chunk-${{ inputs.render_id }}-*
+          path: enc
+          merge-multiple: true
+      - name: Join
+        env:
+          RENDER_KEY: ${{ secrets.RENDER_KEY }}
+          RENDER_RECIPIENT: ${{ vars.RENDER_RECIPIENT }}
+          CHUNKS: ${{ needs.plan.outputs.chunks }}
+          FPS: ${{ inputs.fps }}
+          AUDIO_RATE: ${{ inputs.audio_rate }}
+          AUDIO_BITRATE: ${{ inputs.audio_bitrate }}
+        run: |
+          mkdir -p chunks
+          for f in enc/chunk-*.mkv.age; do
+            n=$(basename "$f" .age)
+            age -d -i <(printf '%s\n' "$RENDER_KEY") -o "chunks/$n" "$f"
+          done
+          python3 .github/scripts/join.py
+          age -r "$RENDER_RECIPIENT" -o out/render.mp4.age out/render.mp4
+          rm -rf chunks enc out/render.mp4 audio.raw list.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: render-${{ inputs.render_id }}
+          path: out/render.mp4.age
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Delete the chunk artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RID: ${{ inputs.render_id }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate \
+            -q ".artifacts[] | select(.name | startswith(\"chunk-$RID-\")) | .id" |
+            xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/{}"

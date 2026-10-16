@@ -8,9 +8,10 @@
     python3 edit.py render   edits/NAME [--plan plan.json] --draft   laptop, 2/3 size -> edits/NAME/render-draft.mp4
     python3 edit.py stills   edits/NAME --at 15.4 --at 13-15.5   only those moments -> stills-at/sheet.png
     python3 edit.py patch    edits/NAME [--range 13-15.5]   re-renders only what changed since render.mp4 (render.plan.json)
-    python3 edit.py render   edits/NAME [--plan plan.json] --github   -> edits/NAME/github-render/ + github-render-media.zip
-    python3 edit.py github-push  edits/NAME --repo NAME [--plan plan.json]   private repo + media release, starts a render
-    python3 edit.py github-fetch edits/NAME --repo NAME [--plan plan.json]   waits, then -> edits/NAME/render-github.mp4
+    python3 edit.py render   edits/NAME [--plan plan.json] --github [--purge-logs]   GitHub Actions in this editor's public
+                             repo, footage encrypted (lib/ai_editor/ghrender.py): starts, waits -> edits/NAME/render-github.mp4
+    python3 edit.py github-push  edits/NAME [--plan plan.json] [--repo OWNER/NAME]   only start it (encrypt, upload, dispatch)
+    python3 edit.py github-fetch edits/NAME [--plan plan.json] [--purge-logs]   wait for it, download, decrypt, clean up
     python3 edit.py render   edits/NAME --speculative   the review page starts it when the stills go up (review.py round --stills):
                              the same laptop render at low priority, into render.spec.mp4. A plain `render` after the stills'
                              approve takes it over (waits for it, or uses the finished file) when the plan and every file it
@@ -33,7 +34,6 @@ import re
 import shutil
 import subprocess
 import sys
-import textwrap
 import time
 from pathlib import Path
 
@@ -42,6 +42,11 @@ REMOTION = HOME / "remotion"
 PLUGIN = Path(__file__).resolve().parents[3]            # .claude, the editor root
 SRC = PLUGIN / "remotion"
 SETUP = PLUGIN / "skills" / "setup" / "scripts" / "setup.py"
+GH_SCRIPTS = PLUGIN.parent / ".github" / "scripts"     # the render workflow's own scripts, shared with the laptop
+sys.path.insert(0, str(GH_SCRIPTS))
+from chunks import GH_CHUNK_S, GH_MAX_CHUNKS, chunk_ranges  # noqa: E402,F401
+# Chunks joined into one file (the workflow, the laptop's chunked fallback and Modal run the same script).
+JOIN = (GH_SCRIPTS / "join.py").read_text(encoding="utf-8")
 
 
 def sync_renderer(edit=None):
@@ -536,33 +541,23 @@ def render_laptop(edit, plan_path, pub, out, draft, run=None, chunks=None):
                                 "bundle_s": bundle_s, "source": f"render of {edit.name}"})
 
 
-# GitHub Actions, measured 2026-09-30 (a private test repo): ubuntu-latest rendered
-# the sample take, 44.2 s of 1080x1920 (1326 frames), in 409 s, plus about 25 s of npm ci, browser and media download.
+# GitHub Actions, measured 2026-09-30 (2-core private runners): ubuntu-latest rendered 44.2 s of 1080x1920
+# (1326 frames) in 409 s, plus about 25 s of npm ci, browser and media download. Public repos get 4-core runners
+# and unlimited minutes, so this is a cautious guess there.
 GH_S_PER_FRAME = 0.31
 GH_INSTALL_S = 25
-GH_CHUNK_S = 120          # about 2 min of video per runner
-GH_MAX_CHUNKS = 20        # free accounts run 20 jobs at once
-GH_ASSET_MAX = 1_900_000_000   # release files are capped at 2 GiB; bigger media goes up in parts
-
-
-def chunk_ranges(frames, fps):
-    """Frame ranges [from, to] (inclusive), one per runner. The workflow's plan job runs this function."""
-    k = max(1, min(GH_MAX_CHUNKS, math.ceil(frames / (fps * GH_CHUNK_S))))
-    step = math.ceil(frames / k)
-    return [[a, min(frames, a + step) - 1] for a in range(0, frames, step)]
+GH_ASSET_MAX = 1_900_000_000   # release files are capped at 2 GiB; bigger footage goes up in parts
 
 
 def github_estimate(frames, fps, media_bytes):
     chunks = chunk_ranges(frames, fps)
     longest = max(b - a + 1 for a, b in chunks)
     wall = GH_INSTALL_S + longest * GH_S_PER_FRAME
-    # Actions bills each job rounded up to the minute: the plan job, every chunk, the join.
-    minutes = 2 + sum(math.ceil((GH_INSTALL_S + (b - a + 1) * GH_S_PER_FRAME) / 60) for a, b in chunks)
     parts = math.ceil(media_bytes / GH_ASSET_MAX)
-    media = (f"media {media_bytes / 1e6:.0f} MB, " +
-             ("fits one release file" if parts <= 1 else f"uploaded in {parts} parts (one release file holds 2 GB)"))
-    return (f"GitHub Actions: about {wall / 60:.1f} min on {len(chunks)} runner{'s' * (len(chunks) > 1)}, "
-            f"uses about {minutes} of the 2,000 free private-repo minutes a month; {media}. Free.")
+    media = (f"footage {media_bytes / 1e6:.0f} MB encrypted, " +
+             ("one upload" if parts <= 1 else f"uploaded in {parts} parts (one release file holds 2 GB)"))
+    return (f"GitHub Actions: about {wall / 60:.1f} min on {len(chunks)} runner{'s' * (len(chunks) > 1)} "
+            f"in this editor's public repo; {media}. Free, no minute limit.")
 
 
 def minutes(s):
@@ -613,176 +608,6 @@ def recommend(video_s, modal_ok, lap_s, modal_s, usd):
     return f"Recommended: Laptop, free ({why})."
 
 
-# The render in parallel: `plan` splits the frames (chunk_ranges, pasted in below), one `render` job per
-# chunk, `join` concatenates the chunks in order into the `render` artifact that github-fetch downloads.
-WORKFLOW = """name: render
-on: workflow_dispatch
-permissions:
-  contents: read
-  actions: write
-jobs:
-  plan:
-    runs-on: ubuntu-latest
-    outputs:
-      chunks: ${{ steps.split.outputs.chunks }}
-      fps: ${{ steps.split.outputs.fps }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: split
-        run: |
-          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
-          import json, math
-__CHUNK_PY__
-          p = json.load(open("plan.json"))
-          r = chunk_ranges(p["durationInFrames"], p["fps"])
-          print("chunks=" + json.dumps([{"i": f"{i:02d}", "from": a, "to": b} for i, (a, b) in enumerate(r)]))
-          print(f"fps={p['fps']}")
-          EOF
-  render:
-    needs: plan
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
-    strategy:
-      matrix:
-        chunk: ${{ fromJSON(needs.plan.outputs.chunks) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
-      - run: npx remotion browser ensure
-      - run: |
-          gh release download media -R "$GITHUB_REPOSITORY" -p '__ZIP__*'
-          if ls __ZIP__.part-* >/dev/null 2>&1; then cat __ZIP__.part-* > __ZIP__ && rm __ZIP__.part-*; fi
-          unzip -q __ZIP__ -d public && rm __ZIP__
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - run: node render.mjs chunk public plan.json out/chunk-${{ matrix.chunk.i }}.mkv ${{ matrix.chunk.from }} ${{ matrix.chunk.to }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: chunk-${{ matrix.chunk.i }}
-          path: out/chunk-${{ matrix.chunk.i }}.mkv
-          retention-days: 1
-  join:
-    needs: [plan, render]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: chunk-*
-          path: chunks
-          merge-multiple: true
-      - run: command -v ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
-      - run: |
-          python3 - <<'EOF'
-__JOIN__
-          EOF
-        env:
-          CHUNKS: ${{ needs.plan.outputs.chunks }}
-          FPS: ${{ needs.plan.outputs.fps }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: render
-          path: out/render.mp4
-          retention-days: 1
-      - run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate \\
-            -q '.artifacts[] | select(.name | startswith("chunk-")) | .id' |
-            xargs -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/{}"
-        env:
-          GH_TOKEN: ${{ github.token }}
-"""
-# Chunks carry PCM audio that runs a few samples past the last frame (16 at 30 fps). Each chunk's audio
-# is cut to exactly its frames, the pieces laid end to end and encoded to AAC once; the video is copied.
-# Measured on the sample take (3 chunks): no gap or step at the joins, sync held to the sample.
-JOIN = """import json, os, subprocess
-fps, sr = float(os.environ["FPS"]), 48000
-chunks = json.loads(os.environ["CHUNKS"])
-os.makedirs("out", exist_ok=True)
-with open("list.txt", "w") as lst, open("audio.raw", "wb") as pcm:
-    for c in chunks:
-        f = os.path.abspath(f"chunks/chunk-{c['i']}.mkv")
-        lst.write(f"file '{f}'\\n")
-        n = 4 * (round((c["to"] + 1) * sr / fps) - round(c["from"] * sr / fps))
-        a = subprocess.run(["ffmpeg", "-v", "error", "-i", f, "-map", "0:a", "-f", "s16le", "-ac", "2",
-                            "-ar", str(sr), "-"], capture_output=True, check=True).stdout
-        pcm.write(a[:n].ljust(n, b"\\0"))
-subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt",
-                "-f", "s16le", "-ar", str(sr), "-ac", "2", "-i", "audio.raw", "-map", "0:v", "-map", "1:a",
-                "-c:v", "copy", "-c:a", "aac", "-b:a", "320k", "-movflags", "+faststart", "out/render.mp4"], check=True)
-"""
-
-
-def workflow(zip_name):
-    py = "\n".join(f"GH_CHUNK_S = {GH_CHUNK_S}\nGH_MAX_CHUNKS = {GH_MAX_CHUNKS}\n{inspect.getsource(chunk_ranges)}".splitlines())
-    ind = lambda t: "\n".join(" " * 10 + l if l.strip() else "" for l in t.splitlines())
-    return (WORKFLOW.replace("__CHUNK_PY__", ind(py)).replace("__JOIN__", ind(JOIN))
-            .replace("__ZIP__", zip_name))
-
-
-README = """# {name}: render on GitHub Actions
-
-Made by ai-editor (`edit.py render --github`). Keep this repo private: the footage is in
-it, as the `{zip}` asset of the `media` release.
-
-Actions > render > Run workflow renders `plan.json` with Remotion, about 2 minutes of video per
-runner in parallel, then joins the pieces. The video is the `render` artifact on the finished run
-(kept 1 day). `edit.py github-fetch` downloads it, then deletes the footage (the `media` release) and
-the run's artifacts unless the profile says `"cloud_cleanup": false`.
-"""
-
-
-def gh_paths(edit, tag):
-    """(git folder, media zip) for one plan."""
-    return edit / f"github-render{tag}", edit / f"github-render{tag}-media.zip"
-
-
-def media_files(zip_path):
-    """What goes up to the release: the zip, or its parts when it was too big for one file."""
-    return sorted(zip_path.parent.glob(zip_path.name + ".part-*")) or [zip_path]
-
-
-def split_file(path, size):
-    """path -> path.part-00, -01, ... of at most size bytes; the workflow cats them back together."""
-    with open(path, "rb") as f:
-        for i in range(math.ceil(path.stat().st_size / size)):
-            with open(f"{path}.part-{i:02d}", "wb") as out:
-                left = size
-                while left and (buf := f.read(min(left, 1 << 24))):
-                    out.write(buf)
-                    left -= len(buf)
-    path.unlink()
-
-
-def package_github(edit, plan_path, pub, tag):
-    """The renderer source + plan in a git folder (no media), the media zipped beside it."""
-    repo, zip_path = gh_paths(edit, tag)
-    shutil.rmtree(repo / "src", ignore_errors=True)
-    shutil.copytree(SRC / "src", repo / "src")
-    for f in ("package.json", "render.mjs", "tsconfig.json"):
-        shutil.copy2(SRC / f, repo / f)
-    lock = REMOTION / "package-lock.json"          # npm ci on the runner then matches this laptop
-    if lock.exists():
-        shutil.copy2(lock, repo / "package-lock.json")
-    shutil.copy2(plan_path, repo / "plan.json")
-    (repo / ".gitignore").write_text("node_modules/\nout/\npublic/\n*.mp4\n*.zip\n", encoding="utf-8")
-    (repo / "README.md").write_text(README.format(name=edit.name, zip=zip_path.name), encoding="utf-8")
-    wf = repo / ".github" / "workflows" / "render.yml"
-    wf.parent.mkdir(parents=True, exist_ok=True)
-    wf.write_text(workflow(zip_path.name), encoding="utf-8")
-    for f in media_files(zip_path):
-        f.unlink(missing_ok=True)
-    shutil.make_archive(str(zip_path.with_suffix("")), "zip", pub)
-    if zip_path.stat().st_size > GH_ASSET_MAX:
-        split_file(zip_path, GH_ASSET_MAX)
-    mb = lambda p: sum(f.stat().st_size for f in p.rglob("*") if f.is_file() and ".git" not in f.parts) / 1e6
-    print(f"{repo} ({mb(repo):.1f} MB)")
-    for f in media_files(zip_path):
-        print(f"{f} ({f.stat().st_size / 1e6:.1f} MB)")
-    return repo, zip_path
-
-
 def gh(*args, check=True, cwd=None):
     r = subprocess.run(["gh", *args], capture_output=True, text=True, cwd=cwd)
     if check and r.returncode:
@@ -798,12 +623,6 @@ def need_gh():
         sys.exit(1)
 
 
-# The render repo's own .git/config: an empty helper clears the user's global ones for this repo only, then
-# gh supplies the login. `gh auth setup-git` would rewrite the user's global git config instead.
-GIT_CREDENTIAL = [["config", "--local", "--replace-all", "credential.helper", ""],
-                  ["config", "--local", "--add", "credential.helper", "!gh auth git-credential"]]
-
-
 def cloud_cleanup():
     """The profile's answer to "Delete the uploaded footage from <service> after rendering?". Unanswered: yes."""
     sys.path.insert(0, str(PLUGIN / "lib"))
@@ -811,95 +630,35 @@ def cloud_cleanup():
     return profile.load().get("cloud_cleanup", True) is not False
 
 
-def github_cleanup(repo_name, run_id, gh=gh):
-    """After the render is downloaded: delete the footage from GitHub. The `media` release (and its tag) and every
-    artifact of the run. The repo stays (renderer source and plan, no footage) for the next push."""
-    gh("release", "delete", "media", "-y", "--cleanup-tag", "-R", repo_name, check=False)
-    arts = gh("api", f"repos/{repo_name}/actions/runs/{run_id}/artifacts", check=False).stdout
-    for a in (json.loads(arts).get("artifacts", []) if arts.strip() else []):
-        gh("api", "-X", "DELETE", f"repos/{repo_name}/actions/artifacts/{a['id']}", check=False)
-    print(f"deleted the footage from {repo_name}: the media release and the run's artifacts")
+def ghrender_mod():
+    sys.path.insert(0, str(PLUGIN / "lib"))
+    from ai_editor import ghrender
+    return ghrender
 
 
-def github_push(edit, repo_name, tag):
+def github_push(edit, plan_path, pub, tag, repo=None):
+    """Bundle the renderer with the footage, encrypt it, upload it as a draft release, start the workflow."""
     need_gh()
-    repo, zip_path = gh_paths(edit, tag)
-    media = media_files(zip_path)
-    if not (repo / ".github").exists() or not media[0].exists():
-        sys.exit(f"ERROR: {repo} missing: run edit.py render {edit} --github first")
-    view = gh("repo", "view", repo_name, "--json", "isPrivate,nameWithOwner,url", check=False)
-    info = json.loads(view.stdout) if view.returncode == 0 else None
-    if info and not info["isPrivate"]:
-        sys.exit(f"ERROR: {info['nameWithOwner']} is public. The footage goes in this repo: use a private one.")
-    git = lambda *a, **kw: subprocess.run(["git", *a], cwd=repo, check=True, **kw)
-    if not (repo / ".git").exists():
-        git("init", "-q", "-b", "main")
-    for c in GIT_CREDENTIAL:                       # git pushes with the gh login, in this repo only
-        git(*c)
-    git("add", "-A")
-    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=repo).returncode:
-        who = subprocess.run(["git", "config", "user.email"], cwd=repo, capture_output=True, text=True).stdout.strip()
-        ident = [] if who else ["-c", "user.name=ai-video-editor", "-c", "user.email=ai-video-editor@users.noreply.github.com"]
-        subprocess.run(["git", *ident, "commit", "-q", "-m", "Render plan"], cwd=repo, check=True)
-    if info is None:
-        print(f"creating private repo {repo_name}")
-        gh("repo", "create", repo_name, "--private", "--source", ".", "--push", cwd=repo)
-        info = json.loads(gh("repo", "view", repo_name, "--json", "isPrivate,nameWithOwner,url").stdout)
-    else:
-        if subprocess.run(["git", "remote", "get-url", "origin"], cwd=repo, capture_output=True).returncode:
-            git("remote", "add", "origin", info["url"] + ".git")
-        git("push", "-q", "-u", "origin", "HEAD:main")
-    full = info["nameWithOwner"]
-    print(f"uploading {', '.join(f.name for f in media)} ({sum(f.stat().st_size for f in media) / 1e6:.0f} MB)", flush=True)
-    rel = gh("release", "view", "media", "-R", full, "--json", "assets", "-q", ".assets[].name", check=False)
-    if rel.returncode == 0:
-        # A zip left from an earlier push would be downloaded with (or cat over) the new media.
-        for old in set(rel.stdout.split()) - {f.name for f in media}:
-            gh("release", "delete-asset", "media", old, "-y", "-R", full)
-        gh("release", "upload", "media", *map(str, media), "--clobber", "-R", full)
-    else:
-        gh("release", "create", "media", *map(str, media), "--title", "media", "-R", full,
-           "--notes", "Footage for the render workflow. Keep this repo private.")
-    started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5))
-    for attempt in range(10):                      # a just-pushed workflow takes a few seconds to register
-        if gh("workflow", "run", "render.yml", "-R", full, check=attempt == 9).returncode == 0:
-            break
-        time.sleep(3)
-    # github-fetch downloads the run started here, never an older one.
-    (edit / f"github{tag}.json").write_text(json.dumps({"repo": full, "started": started}), encoding="utf-8")
-    print(f"render started: {info['url']}/actions/workflows/render.yml")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    bundle_dir = edit / f".github-bundle{tag}"
+    shutil.rmtree(bundle_dir, ignore_errors=True)
+    node("bundle", pub, bundle_dir)
+    try:
+        return ghrender_mod().submit(edit, plan_path, bundle_dir, tag, plan.get("format", ""), repo)
+    finally:
+        shutil.rmtree(bundle_dir, ignore_errors=True)
 
 
-def github_fetch(edit, repo_name, tag):
+def github_fetch(edit, tag, purge_logs=False):
     need_gh()
-    meta = edit / f"github{tag}.json"
-    since = json.loads(meta.read_text(encoding="utf-8"))["started"] if meta.exists() else ""
-    runs = []
-    for _ in range(20):                            # the run triggered by github-push can take a moment to appear
-        runs = [r for r in json.loads(gh("run", "list", "-R", repo_name, "--workflow", "render.yml", "-L", "5",
-                                         "--json", "databaseId,url,createdAt").stdout) if r["createdAt"] >= since]
-        if runs:
-            break
-        time.sleep(3)
-    if not runs:
-        sys.exit("ERROR: no render run since the last push: run edit.py github-push first")
-    run_id = str(runs[0]["databaseId"])
-    print(f"waiting for {runs[0]['url']}", flush=True)
-    if subprocess.run(["gh", "run", "watch", run_id, "-R", repo_name, "--exit-status"]).returncode:
-        sys.exit(f"ERROR: the render failed. Open {runs[0]['url']} for the log.")
-    tmp = edit / f".github-download{tag}"
-    shutil.rmtree(tmp, ignore_errors=True)
-    gh("run", "download", run_id, "-R", repo_name, "-n", "render", "-D", str(tmp))
-    out = edit / f"render-github{tag}.mp4"
-    shutil.move(str(tmp / "render.mp4"), out)
-    shutil.rmtree(tmp, ignore_errors=True)
-    if cloud_cleanup():
-        github_cleanup(repo_name, run_id)
-    else:
-        print(f"kept on GitHub (profile cloud_cleanup false): the footage is the media release of {repo_name}")
+    keep = not cloud_cleanup()
+    out = ghrender_mod().fetch(edit, tag, purge_logs=purge_logs, keep=keep)
+    if keep:
+        print("kept on GitHub (profile cloud_cleanup false): the encrypted footage and render stay until deleted")
     dur = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                           str(out)], capture_output=True, text=True).stdout.strip()
-    print(f"{out} ({float(dur):.1f} s)")
+    if dur:
+        print(f"{out} ({float(dur):.1f} s)")
 
 
 def contact_sheet(edit, plan_name, folder=None):
@@ -1222,18 +981,7 @@ def demo():
     assert footage_filter(lb, 1920, 1080) == "scale=1080:608,setsar=1,pad=1080:1920:0:656:black", footage_filter(lb, 1920, 1080)
     gp = {"width": 1080, "height": 1920, "grade": {"brightness": 0.8, "saturate": 1.5}}
     assert footage_filter(gp, 1080, 1920).endswith(",colorchannelmixer=rr=0.8:gg=0.8:bb=0.8,hue=s=1.5"), footage_filter(gp, 1080, 1920)
-    import tempfile, zipfile
     with tempfile.TemporaryDirectory() as t:
-        edit, pub = Path(t) / "fake", Path(t) / "fake" / ".render"
-        (pub / "images").mkdir(parents=True)
-        (pub / "cut.mp4").write_bytes(b"x" * 100)
-        (pub / "images" / "a.png").write_bytes(b"png")
-        (edit / "plan.json").write_text('{"video": "cut.mp4"}', encoding="utf-8")
-        repo, z = package_github(edit, edit / "plan.json", pub, "")
-        for f in (".github/workflows/render.yml", "plan.json", "package.json", "render.mjs", "src/index.ts"):
-            assert (repo / f).exists(), f
-        assert not list(repo.rglob("*.mp4")), "footage leaked into the git folder"
-        assert set(zipfile.ZipFile(z).namelist()) >= {"cut.mp4", "images/a.png"}, zipfile.ZipFile(z).namelist()
         # an unchanged renderer file is never rewritten (parallel stills bundle it); a changed one is
         a, b = Path(t) / "a.ts", Path(t) / "b.ts"
         a.write_text("same", encoding="utf-8"), b.write_text("same", encoding="utf-8")
@@ -1251,44 +999,20 @@ def demo():
         mirror(up, mine)
         assert sorted(p.relative_to(mine).as_posix() for p in mine.rglob("*")) == ["keep", "keep/A.tsx"], list(mine.rglob("*"))
         assert (Path(t) / "outside.txt").exists()
-        wf = (repo / ".github/workflows/render.yml").read_text(encoding="utf-8")
-        assert "-p 'github-render-media.zip*'" in wf
-        for job in ("  plan:", "  render:", "  join:", "name: render\n", "render.mjs chunk", '"concat"'):
-            assert job in wf, job
-        # the plan job's own script gives the same chunks as chunk_ranges
-        (repo / "plan.json").write_text('{"durationInFrames": 72000, "fps": 30}', encoding="utf-8")
-        py = re.search(r"<<'EOF' >> \"\$GITHUB_OUTPUT\"\n(.*?)\n\s*EOF", wf, re.S).group(1)
-        out = subprocess.run([sys.executable, "-c", textwrap.dedent(py)], cwd=repo, capture_output=True, text=True, check=True).stdout
-        got = json.loads(out.splitlines()[0].partition("=")[2])
-        assert out.splitlines()[1] == "fps=30", out
-        assert [[c["from"], c["to"]] for c in got] == chunk_ranges(72000, 30) and got[-1]["i"] == "19", got[-1]
-        big = Path(t) / "big.zip"
-        big.write_bytes(bytes(range(256)) * 10)
-        split_file(big, 1000)
-        assert [p.name for p in media_files(big)] == ["big.zip.part-00", "big.zip.part-01", "big.zip.part-02"]
-        assert b"".join(p.read_bytes() for p in media_files(big)) == bytes(range(256)) * 10
-    # git pushes use the gh login in the render repo only: the user's global credential helper is never rewritten
-    assert "setup-git" not in inspect.getsource(github_push)
-    assert GIT_CREDENTIAL and all(c[:2] == ["config", "--local"] for c in GIT_CREDENTIAL), GIT_CREDENTIAL
-    # after a downloaded render the footage leaves GitHub: the media release and the run's artifacts, nothing else
-    assert "retention-days: 7" not in WORKFLOW and WORKFLOW.count("retention-days: 1") == 2
-    calls = []
-
-    def fake_gh(*args, check=True, cwd=None):
-        calls.append(args)
-        out = '{"artifacts": [{"id": 11, "name": "render"}, {"id": 12, "name": "chunk-00"}]}' if args[:1] == ("api",) and "-X" not in args else ""
-        return subprocess.CompletedProcess(args, 0, out, "")
-    github_cleanup("me/video-x", "99", fake_gh)
-    assert ("release", "delete", "media", "-y", "--cleanup-tag", "-R", "me/video-x") in calls, calls
-    assert {c[-1] for c in calls if "DELETE" in c} == {"repos/me/video-x/actions/artifacts/11", "repos/me/video-x/actions/artifacts/12"}, calls
-    assert not any("repo" in c[:1] or "delete" == c[0] for c in calls), "never the repo itself"
+    # GitHub: the chunks and the join are the workflow's own scripts; the laptop and Modal join the same way
+    assert JOIN == (GH_SCRIPTS / "join.py").read_text(encoding="utf-8") and '"concat"' in JOIN
+    wf = (PLUGIN.parent / ".github" / "workflows" / "render.yml").read_text(encoding="utf-8")
+    for job in ("  plan:", "  render:", "  join:", "name: render\n", "render.mjs chunk", "chunks.py", "join.py"):
+        assert job in wf, job
+    assert "isPrivate" not in inspect.getsource(github_push), "no public-repo refusal any more"
     assert chunk_ranges(1326, 30) == [[0, 1325]]
     r = chunk_ranges(40 * 60 * 30, 30)
     assert len(r) == 20 and r[0] == [0, 3599] and r[-1][1] == 71999, r
     assert len(chunk_ranges(3 * 3600 * 30, 30)) == 20                       # capped
     assert all(b - a + 1 > 0 for a, b in chunk_ranges(9, 1))
-    assert "1 runner," in github_estimate(1326, 30, 34e6) and "fits one" in github_estimate(1326, 30, 34e6)
+    assert "1 runner " in github_estimate(1326, 30, 34e6) and "one upload" in github_estimate(1326, 30, 34e6)
     assert "20 runners" in github_estimate(72000, 30, 5e9) and "3 parts" in github_estimate(72000, 30, 5e9)
+    assert "no minute limit" in github_estimate(1326, 30, 34e6)
     # Modal: containers from the work (the billed boot stays under 20% of each one's bill), three
     # pieces each from a shared queue, every frame once and in order, capped
     assert modal_plan(6167, 0.345) == (18, modal_plan(6167, 0.345)[1]) and len(modal_plan(6167, 0.345)[1]) == 54
@@ -1463,8 +1187,9 @@ def main():
     ap.add_argument("--lambda", dest="use_lambda", action="store_true")
     ap.add_argument("--modal", action="store_true", help="render on Modal (modal.com)")
     ap.add_argument("--draft", action="store_true", help="laptop render at 2/3 size, to render-draft.mp4")
-    ap.add_argument("--github", action="store_true", help="package for GitHub Actions instead of rendering here")
-    ap.add_argument("--repo", help="GitHub repo name (github-push, github-fetch)")
+    ap.add_argument("--github", action="store_true", help="render on GitHub Actions in this editor's repo (encrypted)")
+    ap.add_argument("--repo", help="OWNER/NAME to render in (default: this checkout's GitHub origin)")
+    ap.add_argument("--purge-logs", action="store_true", help="GitHub: also delete the run and its log afterwards")
     ap.add_argument("--no-check", action="store_true", help="stills even when check.py plan finds a FAIL")
     ap.add_argument("--at", action="append", help="stills: only this moment (15.4 or 0:15) or range (13-15.5, five stills)")
     ap.add_argument("--range", action="append", help="patch: re-render this span (13-15.5) instead of what changed")
@@ -1475,10 +1200,11 @@ def main():
     plan_path = edit / a.plan
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     tag = plan_path.stem[len("plan"):]
-    if a.cmd.startswith("github-"):
-        if not a.repo:
-            sys.exit("ERROR: --repo NAME is required")
-        return (github_push if a.cmd == "github-push" else github_fetch)(edit, a.repo, tag)
+    if a.cmd == "github-fetch":
+        return github_fetch(edit, tag, a.purge_logs)
+    push_only = a.cmd == "github-push"
+    if push_only:
+        a.cmd, a.github = "render", True
     sys.path.insert(0, str(PLUGIN / "lib"))
     from ai_editor import review
     laptop = a.cmd == "render" and not (a.draft or a.github or a.use_lambda or a.modal)
@@ -1521,7 +1247,9 @@ def main():
     elif a.cmd == "patch":
         patch(edit, plan_path, plan, pub, tag, a.range)
     elif a.github:
-        package_github(edit, plan_path, pub, tag)
+        github_push(edit, plan_path, pub, tag, a.repo)
+        if not push_only:
+            github_fetch(edit, tag, a.purge_logs)
     elif a.use_lambda:
         node("lambda", pub, plan_path, edit / f"render{tag}.mp4", re.sub(r"[^a-z0-9-]+", "-", f"ai-editor-{edit.name}{tag}".lower()),
              *(["--cleanup"] if cloud_cleanup() else []))

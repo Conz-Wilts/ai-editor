@@ -214,6 +214,6 @@ it later. End with: "Ready. Type ai-editor in a terminal, or say edit my video."
 ## Optional: GitHub Actions and AWS Lambda renders
 
 Only when the user picks **Other** at render time, or asks:
-- **GitHub Actions** (free, a private repo in their account): `references/cloud.md` "The GitHub CLI".
+- **GitHub Actions** (free, this editor's public repo, footage encrypted): `references/cloud.md` "The GitHub CLI".
 - **AWS Lambda** (many machines at once, costs money on their own AWS account; style-edit quotes
   each render first): `references/lambda.md`.

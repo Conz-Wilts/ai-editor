@@ -98,6 +98,11 @@ node "$S/capture.mjs" edits/<name>          # only when a beat needs a new captu
 python3 "$S/plan.py" edits/<name>/style.json edits/<name>/captions.json [--aspect ...] [--layout ...]
 ```
 
+Then `python3 "$S/project.py" sync edits/<name>` (the app's timeline keeps the user's own moves). To move, trim
+or drop one card without planning again, edit the timeline directly: `project.py show edits/<name>` for the ids,
+then `project.py apply edits/<name> ops.json` (ops: lib/ai_editor/project_store.py; `--propose` when the user
+should approve it in the app first), then `project.py export edits/<name>`.
+
 Plan with the same flags as the edit's last plan (the same `--out` for a second shape, then
 `--plan plan-16x9.json` on every later command). plan.py is deterministic: the beats you did not
 touch come out the same. It keeps the rendered plan as `render.plan.json` before it overwrites

@@ -116,6 +116,12 @@ that fails to load stops the render. Cards still come from visuals.json (step 3)
 - **Shape:** the cut's shape unless `--aspect` says otherwise (a wide cut made vertical is
   centre-cropped; a vertical cut made wide sits over a blurred copy). For a second shape or layout,
   `--out edits/<name>/plan-16x9.json`, then pass `--plan plan-16x9.json` to every later command.
+- **Format:** `--format <id>` plans for one platform from `.claude/remotion/src/formats.json` (`lib/ai_editor/formats.py
+  list`): `shorts`, `tiktok`, `reels`, `vertical-all` (safe on every app), `youtube`, `youtube-4k`, `ig-4x5`, `square`.
+  The plan gets that canvas, that app's safe zone (TikTok's button column is a keep-out `check.py plan` FAILs) and
+  `"format"`, which `render.mjs` encodes for (yuv420p, BT.709, AAC 48 kHz, the format's max rate). 4:5 and 1:1 run
+  the 9:16 rules. No `--format`: the shape's legacy zone (`vertical`, `youtube`), exactly as before. Check a format by
+  eye with `render.mjs stills ... --safe` (zone in red, keep-outs in orange, Reels' feed crop dashed).
 
 ## Behind the speaker (the cutout)
 

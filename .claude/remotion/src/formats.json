@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "default": "vertical",
+  "notes": "Output formats: canvas, the platform's UI safe zone and the export settings. The single source of truth for the renderer (formats.ts) and the Python scripts (lib/ai_editor/formats.py). safe: px on the canvas a plan never draws into (left/top/right/bottom). safePct: the same in % of width/height, used as is when present (the legacy zones, so old plans keep their numbers). keepout: extra px rects UI covers (TikTok's button column). feedCrop: the part a feed shows (Reels in the grid at 4:5). legacyAspect: the layout logic plan.py runs for this format.",
+  "formats": {
+    "vertical": {
+      "label": "Vertical 9:16 (every short-form app)",
+      "platforms": ["TikTok", "Instagram Reels", "YouTube Shorts"],
+      "aspect": "9:16", "width": 1080, "height": 1920, "legacyAspect": "9:16",
+      "safePct": {"left": 5.6, "top": 13.1, "right": 13.0, "bottom": 25.0},
+      "export": {"codec": "h264", "profile": "high", "pixelFormat": "yuv420p", "colorSpace": "bt709", "crf": 18,
+                 "maxrate": "10M", "bufsize": "20M", "audio": {"codec": "aac", "sampleRate": 48000, "bitrate": "320k"}}
+    },
+    "shorts": {
+      "label": "YouTube Shorts", "platforms": ["YouTube Shorts"], "maxDurationS": 180,
+      "aspect": "9:16", "width": 1080, "height": 1920, "legacyAspect": "9:16",
+      "safe": {"left": 48, "top": 288, "right": 192, "bottom": 672},
+      "export": {"codec": "h264", "profile": "high", "pixelFormat": "yuv420p", "colorSpace": "bt709", "crf": 18,
+                 "maxrate": "10M", "bufsize": "20M", "audio": {"codec": "aac", "sampleRate": 48000, "bitrate": "320k"}}
+    },
+    "tiktok": {
+      "label": "TikTok", "platforms": ["TikTok"], "maxDurationS": 600,
+      "aspect": "9:16", "width": 1080, "height": 1920, "legacyAspect": "9:16",
+      "safe": {"left": 120, "top": 240, "right": 120, "bottom": 660},
+      "keepout": [{"x": 900, "y": 840, "w": 180, "h": 420}],
+      "export": {"codec": "h264", "profile": "high", "pixelFormat": "yuv420p", "colorSpace": "bt709", "crf": 18,
+                 "maxrate": "10M", "bufsize": "20M", "audio": {"codec": "aac", "sampleRate": 48000, "bitrate": "320k"}}
+    },
+    "reels": {
+      "label": "Instagram Reels", "platforms": ["Instagram Reels"], "maxDurationS": 180,
+      "aspect": "9:16", "width": 1080, "height": 1920, "legacyAspect": "9:16",
+      "safe": {"left": 65, "top": 269, "right": 65, "bottom": 672},
+      "feedCrop": {"x": 0, "y": 285, "w": 1080, "h": 1350},
+      "export": {"codec": "h264", "profile": "high", "pixelFormat": "yuv420p", "colorSpace": "bt709", "crf": 18,
+                 "maxrate": "10M", "bufsize": "20M", "audio": {"codec": "aac", "sampleRate": 48000, "bitrate": "320k"}}
+    },
+    "vertical-all": {
+      "label": "Vertical, safe on every app (strictest)", "platforms": ["TikTok", "Instagram Reels", "YouTube Shorts"],
+      "aspect": "9:16", "width": 1080, "height": 1920, "legacyAspect": "9:16",
+      "safe": {"left": 120, "top": 288, "right": 192, "bottom": 672},
+      "keepout": [{"x": 900, "y": 840, "w": 180, "h": 420}],
+      "feedCrop": {"x": 0, "y": 285, "w": 1080, "h": 1350},
+      "export": {"codec": "h264", "profile": "high", "pixelFormat": "yuv420p", "colorSpace": "bt709", "crf": 18,
+                 "maxrate": "10M", "bufsize": "20M", "audio": {"codec": "aac", "sampleRate": 48000, "bitrate": "320k"}}
+    },
+    "youtube": {
+      "label": "YouTube 16:9 1080p", "platforms": ["YouTube"],
+      "aspect": "16:9", "width": 1920, "height": 1080, "legacyAspect": "16:9",
+      "safePct": {"left": 3, "top": 5, "right": 3, "bottom": 10},
+      "export": {"codec": "h264", "profile": "high", "pixelFormat": "yuv420p", "colorSpace": "bt709", "crf": 18,
+                 "maxrate": "12M", "bufsize": "24M", "audio": {"codec": "aac", "sampleRate": 48000, "bitrate": "320k"}}
+    },
+    "youtube-4k": {
+      "label": "YouTube 16:9 4K", "platforms": ["YouTube"],
+      "aspect": "16:9", "width": 3840, "height": 2160, "legacyAspect": "16:9",
+      "safePct": {"left": 3, "top": 5, "right": 3, "bottom": 10},
+      "export": {"codec": "h264", "profile": "high", "pixelFormat": "yuv420p", "colorSpace": "bt709", "crf": 18,
+                 "maxrate": "45M", "bufsize": "90M", "audio": {"codec": "aac", "sampleRate": 48000, "bitrate": "320k"}}
+    },
+    "ig-4x5": {
+      "label": "Instagram feed 4:5", "platforms": ["Instagram feed"],
+      "aspect": "4:5", "width": 1080, "height": 1350, "legacyAspect": "9:16",
+      "safe": {"left": 54, "top": 68, "right": 54, "bottom": 68},
+      "export": {"codec": "h264", "profile": "high", "pixelFormat": "yuv420p", "colorSpace": "bt709", "crf": 18,
+                 "maxrate": "8M", "bufsize": "16M", "audio": {"codec": "aac", "sampleRate": 48000, "bitrate": "320k"}}
+    },
+    "square": {
+      "label": "Square 1:1", "platforms": ["Instagram feed", "LinkedIn", "X"],
+      "aspect": "1:1", "width": 1080, "height": 1080, "legacyAspect": "9:16",
+      "safe": {"left": 54, "top": 54, "right": 54, "bottom": 54},
+      "export": {"codec": "h264", "profile": "high", "pixelFormat": "yuv420p", "colorSpace": "bt709", "crf": 18,
+                 "maxrate": "8M", "bufsize": "16M", "audio": {"codec": "aac", "sampleRate": 48000, "bitrate": "320k"}}
+    }
+  }
+}

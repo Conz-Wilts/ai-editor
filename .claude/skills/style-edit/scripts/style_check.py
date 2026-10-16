@@ -17,7 +17,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from plan import SAFE, card_rate, graphics, off_screen, took  # noqa: E402
+from plan import SAFE, fmts, card_rate, graphics, off_screen, took  # noqa: E402
 from route import OFF_SCENE_S  # noqa: E402
 
 # a plan card -> the creator-teardown graphics.kinds it counts as
@@ -65,7 +65,7 @@ def check(plan, style):
     if want and want.get("present") is not False and took(style, "captions"):
         if want.get("size_pct") and abs((cs.get("size_pct") or 6) - want["size_pct"]) > 0.3:
             out.append((f"caption size {cs.get('size_pct')}%, {h} {want['size_pct']}%", "set captions.size_pct in style.json"))
-        _, top, _, bottom = SAFE["9:16" if plan.get("height", 1920) > plan.get("width", 1080) else "16:9"]
+        _, top, _, bottom = fmts.plan_safe_pct(plan, SAFE)   # its format's zone, else the shape's
         y = min(max(want.get("y_pct") or 70, top + 5), 100 - bottom - 4)   # plan.py keeps them clear of the app's UI
         if abs((cs.get("y_pct") or 70) - y) > 3 and plan.get("layout", {}).get("mode") != "split" and not cs.get("off_face_from"):
             out.append((f"captions {cs.get('y_pct')}% down, {h} {want.get('y_pct')}%", "set captions.y_pct"))

@@ -79,6 +79,7 @@ type Letterbox = {
 };
 export type Plan = {
   video: string;
+  format?: string; // formats.json id (shorts, tiktok, reels, youtube, ig-4x5, square...); absent: the shape's legacy zone
   width: number;
   height: number;
   fps: number;

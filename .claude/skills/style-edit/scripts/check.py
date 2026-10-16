@@ -33,7 +33,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
-from plan import GAP_S, MIN_SHOW_S, QUIET_HOLD_S, card_gaps, INK_MIN_W, OVERLAY_EDGE, READ_XH, SAFE, capture_xh, explain_ink, clean, cut_lines, cut_points, head_during, overlay_led, small_lines, sticker_crop, words_only  # noqa: E402
+from plan import GAP_S, MIN_SHOW_S, QUIET_HOLD_S, card_gaps, INK_MIN_W, OVERLAY_EDGE, READ_XH, SAFE, fmts, capture_xh, explain_ink, clean, cut_lines, cut_points, head_during, overlay_led, small_lines, sticker_crop, words_only  # noqa: E402
 
 CENTRE_PLAN = 1.5      # % of the width a vertical card's box centre may sit off 50
 CENTRE_INK = 2.0       # % of the width a card's drawn content may sit off centre
@@ -195,7 +195,9 @@ def check_plan(plan, face=None, cuts=(), static_s=STATIC_S, visuals=None, brand=
     tell a full-frame scene the user asked for ("layout": "scene" on its beat) from one nobody did."""
     out = []
     aspect = aspect_of(plan)
-    l, top, r, bottom = SAFE[aspect]
+    l, top, r, bottom = fmts.plan_safe_pct(plan, SAFE)   # its format's zone (formats.json), else the shape's
+    edge = l if plan.get("format") in fmts.ids() else OVERLAY_EDGE   # how far left an overlay beside the head may go
+    keep = fmts.keepouts_pct(plan["format"]) if plan.get("format") in fmts.ids() else []
     if aspect == "9:16":
         l = r = max(l, r)
     W, H = plan["width"], plan["height"]
@@ -250,11 +252,16 @@ def check_plan(plan, face=None, cuts=(), static_s=STATIC_S, visuals=None, brand=
                                "unreadable on a phone", "plan again (plan.py cuts it to the evidence as a sticker), or give "
                                "the beat a \"crop\" round the evidence lines, or \"layout\": \"scene\""))
         if c.get("layout") != "scene" and not spread(c):   # a scene or a logo cluster: the renderer keeps it inside
-            cl = OVERLAY_EDGE if aspect == "9:16" and overlay_led(c) else l   # plan.free_regions: beside the head
+            cl = edge if aspect == "9:16" and overlay_led(c) else l   # plan.free_regions: beside the head
             if x < cl - 0.05 or y < top - 0.05 or x + w > 100 - r + 0.05 or y + h > 100 - bottom + 0.05:
                 out.append(finding("FAIL", c["start"], f"{name} card {[round(v, 1) for v in c['box']]} reaches under the app's UI "
                                    f"(safe: {l}% sides, {top}% top, {bottom}% bottom)",
                                    "drop its box in visuals.json/images.json (plan.py fits it), then plan again"))
+            for kx, ky, kw, kh in keep:   # TikTok's like/comment/share column, inside the zone
+                if x < kx + kw and kx < x + w and y < ky + kh and ky < y + h:
+                    out.append(finding("FAIL", c["start"], f"{name} card {[round(v, 1) for v in c['box']]} sits under the "
+                                       f"{plan['format']} app's buttons", "drop its box (plan.py fits it), then plan again"))
+                    break
         if c.get("layer") == "behind":
             # behind the speaker: the cutout covers the card where it meets him, so it may reach the head,
             # but only once matte.py has cut him out for this card's time
@@ -790,7 +797,23 @@ def style_note(path, style):
     return None
 
 
+def demo_formats():
+    """A format's zone and keep-outs (formats.json) decide what is under the app's UI; no format: the shape's zone."""
+    def plan(fmt=None, box=(55, 46, 30, 12)):
+        p = {"width": 1080, "height": 1920, "fps": 30, "durationInFrames": 300, "zooms": [], "sfx": [],
+             "captions": {"style": {"y_pct": 62, "width_pct": 70}, "chunks": [
+                 {"text": "ok", "start": 0.0, "end": 0.5, "words": [{"text": "ok", "start": 0.0, "end": 0.3}]}]},
+             "cards": [{"trigger_word": "app", "src": "images/a.png", "start": 1.0, "end": 3.0, "box": list(box),
+                        "format": "shot", "entrance": "pop", "layout": "box"}]}
+        return {**p, "format": fmt} if fmt else p
+    under = lambda p: [f for f in check_plan(p) if "buttons" in f["what"] or "under the app" in f["what"]]
+    assert under(plan()) == [], "the legacy vertical zone allows a card at the right edge band"
+    assert ["buttons" in f["what"] for f in under(plan("tiktok"))] == [True], "TikTok's button column is a keep-out"
+    assert any("under the app" in f["what"] for f in under(plan("shorts", (10, 14, 74, 12)))), "Shorts' top 15% is UI"
+
+
 def demo():
+    demo_formats()
     import tempfile
     with tempfile.TemporaryDirectory() as d:   # a frame reader closed early leaves no ffmpeg noise behind
         v = Path(d) / "v.mp4"

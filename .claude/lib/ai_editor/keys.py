@@ -34,12 +34,13 @@ def key_file():
     """$AI_EDITOR_HOME/.env when AI_EDITOR_HOME is set, else the shared KEY_FILE."""
     home = os.environ.get("AI_EDITOR_HOME", "").strip()
     return Path(home) / ".env" if home else KEY_FILE
-VARS = {"elevenlabs": "ELEVENLABS_API_KEY"}
-NAMES = {"elevenlabs": "ElevenLabs"}
+VARS = {"elevenlabs": "ELEVENLABS_API_KEY", "higgsfield": "HIGGSFIELD_API_KEY"}
+NAMES = {"elevenlabs": "ElevenLabs", "higgsfield": "Higgsfield"}
+# Higgsfield keys are "<key id>:<key secret>" from console.higgsfield.ai (one string, saved together).
 
 
 def get(name):
-    """(key, where it came from) or (None, None). `name` is elevenlabs.
+    """(key, where it came from) or (None, None). `name` is elevenlabs or higgsfield.
     Never a .env in the working folder: that is another project's, and its key would be billed."""
     var, p = VARS[name], key_file()
     if os.environ.get(var, "").strip():
@@ -72,29 +73,10 @@ def write_private(path, text):
     return path
 
 
-@contextlib.contextmanager
-def _locked(path, wait=10):
-    """One writer at a time (the home window's threads, setup.py): a lock file beside the key file, made
-    with O_EXCL. One left by a writer that died is stale after 10 s."""
-    lock = Path(path).with_name(Path(path).name + ".lock")
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    for _ in range(int(wait / 0.025)):
-        try:
-            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
-            break
-        except (FileExistsError, PermissionError):   # Windows: a lock being deleted refuses a new open
-            try:
-                if time.time() - lock.stat().st_mtime > 10:
-                    lock.unlink(missing_ok=True)
-            except OSError:
-                pass
-            time.sleep(0.025)
-    else:
-        raise TimeoutError(f"{lock} is held; delete it if nothing is saving a key")
-    try:
-        yield
-    finally:
-        lock.unlink(missing_ok=True)
+try:   # one writer at a time: a lock file beside the key file (fslock.py, shared with project_store.py)
+    from fslock import locked as _locked
+except ImportError:
+    from ai_editor.fslock import locked as _locked
 
 
 def _rewrite(name, key, path):
@@ -129,8 +111,23 @@ def _get(url, headers):
         return 0, net.friendly(e)
 
 
+HIGGSFIELD_PROBE = "https://api.higgsfield.ai/requests/00000000-0000-0000-0000-000000000000/status"
+
+
 def verify(name, key):
     """(ok, message). The check is a free account call: nothing is billed."""
+    if name == "higgsfield":
+        # The status of a request that cannot exist: 404 proves the key was accepted, 401 that it was not.
+        if ":" not in key:
+            return False, "a Higgsfield key is the key id and the secret joined by a colon (id:secret)"
+        code, body = _get(os.environ.get("AI_EDITOR_HIGGSFIELD_PROBE", HIGGSFIELD_PROBE), {"Authorization": f"Key {key}"})
+        if code in (200, 404):
+            return True, "key works"
+        if code == 0:
+            return False, body if body == net.FIX else f"no connection ({body[:80]})"
+        if code in (401, 403):
+            return False, "Higgsfield rejected this key. Copy the id and secret again from console.higgsfield.ai."
+        return False, f"HTTP {code}: {body[:120]}"
     code, body = _get("https://api.elevenlabs.io/v1/user", {"xi-api-key": key})
     # A key restricted to Speech to Text (what setup asks for) may not read /v1/user.
     # That refusal still proves the key exists.
@@ -181,6 +178,20 @@ if __name__ == "__main__":   # self-check: saving one key keeps the others
             assert verify("elevenlabs", "x" * 32)[0] and len(sent) == 1
         finally:
             globals()["_get"] = real_get
+        # Higgsfield: id:secret in one string; a 404 on a request that cannot exist proves the key, 401 refuses it
+        real_get, sent = _get, []
+        try:
+            globals()["_get"] = lambda url, h: sent.append(h) or (404, '{"detail":"not found"}')
+            assert verify("higgsfield", "kid:" + "s" * 24) == (True, "key works") and sent[-1] == {"Authorization": "Key kid:" + "s" * 24}
+            assert not verify("higgsfield", "nocolon" * 4)[0] and len(sent) == 1, "no request without id:secret"
+            globals()["_get"] = lambda url, h: (401, '{"detail":"bad"}')
+            assert not verify("higgsfield", "kid:secret")[0]
+        finally:
+            globals()["_get"] = real_get
+        save("higgsfield", "kid:" + "s" * 24, f)
+        os.environ.pop("HIGGSFIELD_API_KEY", None)
+        assert get("higgsfield") == ("kid:" + "s" * 24, str(f))
+        remove("higgsfield", f)
         cwd = os.getcwd()
         work = Path(d) / "another-project"
         work.mkdir()

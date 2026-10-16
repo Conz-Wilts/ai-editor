@@ -130,11 +130,11 @@ def apply_overrides(plan, edit_dir, plan_name=None):
 def regions(plan, edit_dir):
     """Per card: where it may be dragged to (plan.py free_regions round the head while it is up) and the head."""
     sys.path.insert(0, str(HERE))
-    from plan import SAFE, free_regions, head_during
+    from plan import SAFE, fmts, free_regions, head_during
     aspect = "9:16" if plan["height"] > plan["width"] else "16:9"
     fj = Path(edit_dir) / "face.json"
     face = json.loads(fj.read_text(encoding="utf-8")) if fj.exists() else None
-    l, t, r, b = SAFE[aspect]
+    l, t, r, b = fmts.plan_safe_pct(plan, SAFE)   # its format's zone (formats.json), else the shape's
     cap_y = plan["captions"]["style"].get("y_pct", 74)
     for c in plan["cards"]:
         hd = face and head_during(face["heads"], face.get("step_s", 0.5), c["start"], c["end"])
@@ -245,34 +245,10 @@ def handler(sess, bundle, stop, token):
             self.end_headers()
             self.wfile.write(raw)
 
-        def file(self, path):
-            size = path.stat().st_size
-            start, end = 0, size - 1
-            m = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("Range") or "")
-            if m and (m[1] or m[2]):
-                start, end = (int(m[1]), int(m[2]) if m[2] else size - 1) if m[1] else (size - int(m[2]), size - 1)
-                end = min(end, size - 1)
-                self.send_response(206)
-                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-            else:
-                self.send_response(200)
-            self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
-            self.send_header("Content-Length", str(end - start + 1))
-            self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Cache-Control", "no-cache")
-            self.end_headers()
-            try:
-                with open(path, "rb") as f:
-                    f.seek(start)
-                    left = end - start + 1
-                    while left > 0:
-                        chunk = f.read(min(left, 1 << 20))
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
-                        left -= len(chunk)
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+        def file(self, path):   # byte ranges, so the Player can seek (shared with the app's /api/file)
+            sys.path.insert(0, str(PLUGIN / "lib" / "ai_editor"))
+            import httpfile
+            httpfile.send_file(self, path)
 
         def do_GET(self):
             if not self.authorized():

@@ -1,6 +1,6 @@
 // Renders a plan.json with the StyleEdit composition (or the one its "composition" key names). Called by skills/style-edit/scripts/edit.py.
 //
-//   node render.mjs stills <publicDir> <plan.json> <outDir> name=frame ...
+//   node render.mjs stills <publicDir> <plan.json> <outDir> name=frame ... [--safe[=<format>]]   --safe: draw the format's safe zone
 //   node render.mjs many   <publicDir> <jobs.json>             [{plan: {...}, frame, out: x.jpg}]: one bundle, several plans (style page tiles)
 //   node render.mjs bench  <publicDir> <plan.json>            -> JSON: laptop seconds per frame
 //   node render.mjs local  <publicDir> <plan.json> <out.mp4> [--draft] [--concurrency=N|max]
@@ -9,6 +9,8 @@
 //
 // <publicDir> can also be a bundle folder made by `bundle` (it holds bundle.js): nothing is bundled again.
 // --draft renders at 2/3 size (1080x1920 -> 720x1280), on a Mac with its hardware H.264 encoder.
+// A plan carrying "format" (src/formats.json: shorts, tiktok, reels, youtube, youtube-4k, ig-4x5, square...) is encoded
+// to that format's export settings (yuv420p, BT.709, CRF with a max rate, AAC at 48 kHz); a plan without one as before.
 //   node render.mjs lambda-estimate <plan.json>               -> JSON: Lambda cost + time guess
 //   node render.mjs lambda <publicDir> <plan.json> <out.mp4> <siteName> [--cleanup]   --cleanup: delete the footage and render from S3 after
 //
@@ -27,6 +29,7 @@ const ENTRY = path.join(HERE, "src", "index.ts");
 const ID = "StyleEdit";
 const [cmd, ...args] = process.argv.slice(2);
 const readPlan = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
+const FORMATS = JSON.parse(fs.readFileSync(path.join(HERE, "src", "formats.json"), "utf8")).formats;
 
 // Lambda sizing. New AWS accounts can run about 10 Lambdas at once, so split into at most 9.
 const REGION = process.env.REMOTION_AWS_REGION || process.env.AWS_REGION || "us-east-1";
@@ -62,6 +65,21 @@ const hwOpts = (composition, scale) => (flags.draft && process.platform === "dar
       videoBitrate: `${Math.round(12 * (composition.width * composition.height * scale * scale) / (1080 * 1920))}M` }
   : {};
 
+// The plan's format's export settings (src/formats.json), or null: no format, the encode stays as it always was.
+const exportOf = (plan) => (plan && plan.format && FORMATS[plan.format] ? FORMATS[plan.format].export : null);
+// renderMedia options for the format: never on a draft (the draft is a preview, its own encoder).
+const encodeOpts = (plan) => {
+  const e = exportOf(plan);
+  if (!e || flags.draft) return {};
+  return { pixelFormat: e.pixelFormat || "yuv420p", colorSpace: e.colorSpace || "bt709", crf: e.crf ?? 18,
+           ...(e.maxrate ? { encodingMaxRate: e.maxrate, encodingBufferSize: e.bufsize || e.maxrate } : {}) };
+};
+// The AAC encode after the render: the format's bitrate and sample rate, else the 192k it always was.
+const audioArgs = (plan) => {
+  const a = (exportOf(plan) || {}).audio;
+  return a ? ["-b:a", a.bitrate || "320k", "-ar", String(a.sampleRate || 48000)] : ["-b:a", "192k"];
+};
+
 // "Rendered N/M" at most once a second while frames come in: edit.py's stall watchdog reads it, and so does
 // the review page's progress bar (review.py --log).
 const progress = (total) => {
@@ -90,7 +108,10 @@ async function prepare(publicDir, planPath) {
 }
 
 async function stills(publicDir, planPath, outDir, ...pairs) {
-  const { serveUrl, composition, inputProps } = await prepare(publicDir, planPath);
+  const { serveUrl, composition, inputProps: plan } = await prepare(publicDir, planPath);
+  // --safe draws the plan's format's safe zone and keep-outs over each still; --safe=<format> another format's
+  const inputProps = flags.safe ? { ...plan, showSafe: flags.safe === true ? (plan.format || true) : flags.safe } : plan;
+  if (typeof inputProps.showSafe === "string" && !FORMATS[inputProps.showSafe]) throw new Error(`unknown format ${inputProps.showSafe}`);
   fs.mkdirSync(outDir, { recursive: true });
   for (const pair of pairs) {
     const [name, frame] = pair.split("=");
@@ -163,9 +184,9 @@ async function local(publicDir, planPath, out) {
   // to the video: the same path the GitHub join takes, sample-aligned with the cut.
   const tmp = out.replace(/\.mp4$/i, "") + ".tmp.mkv";
   await renderMedia({ serveUrl, composition, inputProps, codec: "h264-mkv", outputLocation: tmp,
-    enforceAudioTrack: true, concurrency: concurrency(), scale, ...hwOpts(composition, scale), timeoutInMilliseconds: TIMEOUT_MS,
-    onProgress: progress(composition.durationInFrames) });
-  const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-i", tmp, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+    enforceAudioTrack: true, concurrency: concurrency(), scale, ...hwOpts(composition, scale), ...encodeOpts(inputProps),
+    timeoutInMilliseconds: TIMEOUT_MS, onProgress: progress(composition.durationInFrames) });
+  const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-i", tmp, "-c:v", "copy", "-c:a", "aac", ...audioArgs(inputProps),
     "-shortest", "-movflags", "+faststart", out], { stdio: "inherit" });
   fs.rmSync(tmp, { force: true });
   if (r.status !== 0) throw new Error(`ffmpeg could not write ${out}`);
@@ -179,7 +200,7 @@ async function chunk(publicDir, planPath, out, from, to) {
   // h264-mkv carries PCM audio: sample-exact to the frame, no AAC padding, so pieces join without a
   // gap. The join encodes the audio to AAC once.
   await renderMedia({ serveUrl, composition, inputProps, codec: "h264-mkv", outputLocation: out,
-    frameRange: [Number(from), Number(to)], enforceAudioTrack: true, concurrency: concurrency(),
+    frameRange: [Number(from), Number(to)], enforceAudioTrack: true, concurrency: concurrency(), ...encodeOpts(inputProps),
     scale: flags.draft ? 2 / 3 : 1, timeoutInMilliseconds: TIMEOUT_MS, onProgress: progress(Number(to) - Number(from) + 1) });
   console.log(`rendered ${out} (frames ${from}-${to}) in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 }

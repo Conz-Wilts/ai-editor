@@ -44,9 +44,16 @@ import re
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
-SIZES = {"9:16": (1080, 1920), "16:9": (1920, 1080)}
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+from ai_editor import formats as fmts  # noqa: E402  remotion/src/formats.json: canvas, safe zone, export per format
+
+# The two layout shapes every rule below is written for. Their canvas and zone come from formats.json's
+# "vertical" (9:16) and "youtube" (16:9), which carry exactly the numbers these used to be. A plan made for
+# another format (--format shorts, ig-4x5, square...) runs its legacyAspect's rules inside format_scope.
+SIZES = {"9:16": fmts.size("vertical"), "16:9": fmts.size("youtube")}
 PAUSE_S = 0.3          # a gap this long starts a new caption chunk
 MAX_WORD_S = 0.8       # longest a single spoken word is believed to last
 HOLD_TAIL_S = 0.3      # a caption stays up this long after its last word
@@ -65,7 +72,21 @@ DEFAULT_BOX = {"9:16": [10, 15, 74, 20], "16:9": [54, 10, 40, 48]}
 # Vertical is the reels safe zone, x 60-940 and y 250-1440 of 1080x1920 (rounded inwards): nothing a plan draws
 # (cards, overlays, logos, captions, scene content) goes outside it. Cards centred on the frame keep the wider
 # side margin on both sides (x 140-940).
-SAFE = {"9:16": (5.6, 13.1, 13.0, 25.0), "16:9": (3, 5, 3, 10)}
+SAFE = {"9:16": fmts.safe_pct("vertical"), "16:9": fmts.safe_pct("youtube")}
+LEGACY_SIZES, LEGACY_SAFE = dict(SIZES), dict(SAFE)
+
+
+@contextmanager
+def format_scope(fmt):
+    """Plan for formats.json format `fmt`: its legacyAspect's layout rules on its own canvas and safe zone.
+    Yields that aspect; SIZES and SAFE are restored after."""
+    aspect = fmts.legacy_aspect(fmt)
+    was = SIZES[aspect], SAFE[aspect]
+    SIZES[aspect], SAFE[aspect] = fmts.size(fmt), fmts.safe_pct(fmt)
+    try:
+        yield aspect
+    finally:
+        SIZES[aspect], SAFE[aspect] = was
 # Vertical overlays beside the head (free_regions) may reach the safe zone's left edge; the band above the head
 # is centred, so it keeps the wider margin. check.py plan allows the same.
 OVERLAY_TOP, OVERLAY_EDGE = SAFE["9:16"][1], SAFE["9:16"][0]
@@ -2456,7 +2477,21 @@ def one_per_page(images, visuals):
 
 @with_sfx
 def build(style, words, meta, images=(), aspect="auto", cuts=(), visuals=(), edit_dir=None, layout=None, profile=None,
-          behind=None):
+          behind=None, fmt=None):
+    """fmt: a formats.json id (shorts, tiktok, reels, youtube, ig-4x5, square...): the plan is laid out for its
+    canvas and safe zone and carries "format", which render.mjs encodes for. None: the shape of the cut, as before."""
+    if not fmt:
+        return build_aspect(style, words, meta, images, aspect, cuts, visuals, edit_dir, layout, profile, behind)
+    with format_scope(fmt) as legacy:
+        if aspect not in ("auto", legacy):
+            raise ValueError(f"--format {fmt} is laid out as {legacy}, not {aspect}")
+        plan = build_aspect(style, words, meta, images, legacy, cuts, visuals, edit_dir, layout, profile, behind)
+    plan["format"] = fmt
+    return plan
+
+
+def build_aspect(style, words, meta, images=(), aspect="auto", cuts=(), visuals=(), edit_dir=None, layout=None,
+                 profile=None, behind=None):
     """behind: cards in BEHIND formats sit behind the speaker (default: the profile's "behind" answer, or the
     style's own "behind", as the sample Card edit style sets)."""
     if behind is None:
@@ -2943,7 +2978,28 @@ def demo_punch():
     assert user_rate({"zoom": {"max_hold_s": 5.0}}, {"zoom": {"per_min": 1, "max_hold_s": 4}})["zoom"] == {"max_hold_s": 5.0}
 
 
+def demo_formats():
+    # the shapes' canvas and zone come from formats.json and equal what plan.py always used, to the digit
+    assert SIZES == {"9:16": (1080, 1920), "16:9": (1920, 1080)}, SIZES
+    assert SAFE == {"9:16": (5.6, 13.1, 13.0, 25.0), "16:9": (3, 5, 3, 10)}, SAFE
+    assert (OVERLAY_TOP, OVERLAY_EDGE) == (13.1, 5.6)
+    with format_scope("shorts") as a:   # Shorts: the 9:16 rules inside its own, stricter zone
+        assert a == "9:16" and SAFE["9:16"] == fmts.safe_pct("shorts") and SIZES["9:16"] == (1080, 1920)
+    with format_scope("square") as a:   # 1:1 runs the vertical rules on a square canvas
+        assert a == "9:16" and SIZES["9:16"] == (1080, 1080)
+    with format_scope("youtube-4k") as a:
+        assert a == "16:9" and SIZES["16:9"] == (3840, 2160) and SAFE["16:9"] == (3, 5, 3, 10)
+    assert SIZES == LEGACY_SIZES and SAFE == LEGACY_SAFE, "format_scope restores the shapes"
+    try:
+        with format_scope("shorts"):
+            raise RuntimeError("boom")
+    except RuntimeError:
+        pass
+    assert SAFE == LEGACY_SAFE, "restored after an error too"
+
+
 def demo():
+    demo_formats()
     # music follows the creator (a bed in half her videos or more) unless the profile or the style page says otherwise
     snd = {"sound": {"music": {"present_pct": 100}}}
     assert music_wanted(snd, {}) is True and music_wanted(snd, {"sound": {"sfx": True}}) is True, "QA round 2: no bed"
@@ -3005,6 +3061,14 @@ def demo():
     assert c["box"] == DEFAULT_BOX["16:9"]
     v = build(style, words, meta, aspect="9:16")
     assert (v["width"], v["height"]) == (1080, 1920)
+    assert "format" not in v, "no --format: the plan is as it always was"
+    sh = build(style, words, meta, fmt="shorts")   # Shorts: the 9:16 rules in its own zone, and the plan says so
+    assert sh["format"] == "shorts" and (sh["width"], sh["height"]) == (1080, 1920), sh.get("format")
+    _, s_top, _, s_bottom = fmts.safe_pct("shorts")
+    assert s_top + 5 <= sh["captions"]["style"]["y_pct"] <= 100 - s_bottom - 4, sh["captions"]["style"]["y_pct"]
+    sq = build(style, words, meta, fmt="square")
+    assert (sq["width"], sq["height"]) == (1080, 1080) and sq["format"] == "square"
+    assert SIZES == LEGACY_SIZES and SAFE == LEGACY_SAFE
     assert build(style, words, meta, imgs) == p, "not deterministic"
     push = place_zooms({"per_min": 30, "kind": "push", "duration_s": 0.5, "on": "emphasis"},
                        [w for w in words], t, [])
@@ -3789,6 +3853,8 @@ def main():
     ap.add_argument("words")
     ap.add_argument("--images")
     ap.add_argument("--aspect", choices=["auto", "9:16", "16:9"], default="auto")
+    ap.add_argument("--format", choices=fmts.ids(), help="a formats.json id (canvas, platform safe zone, export): "
+                    "shorts, tiktok, reels, vertical-all, youtube, youtube-4k, ig-4x5, square. Default: the cut's shape")
     ap.add_argument("--layout", choices=["overlay", "split", "letterbox", "board"], help="default: style.json layout.mode, else overlay")
     ap.add_argument("--title", help="letterbox: the title above the band (default: the first sentence, lowercase)")
     ap.add_argument("--out")
@@ -3819,7 +3885,8 @@ def main():
     style = effective_style(sp, prof, edit_dir)
     plan = build(style, json.loads(Path(a.words).read_text(encoding="utf-8")),
                  probe(video), images, a.aspect, cut_points(edit_dir), visuals, edit_dir,
-                 {k: v for k, v in (("mode", a.layout), ("title", a.title)) if v} or None, prof, None if a.behind is None else a.behind == "on")
+                 {k: v for k, v in (("mode", a.layout), ("title", a.title)) if v} or None, prof, None if a.behind is None else a.behind == "on",
+                 fmt=a.format)
     out = Path(a.out) if a.out else edit_dir / "plan.json"
     treated = treat_captions(plan, edit_dir, probe(video), contrast_floors(edit_dir, out))
     line = contrast_summary(treated, plan["captions"]["chunks"])

@@ -35,6 +35,10 @@ What got installed is recorded in ~/.ai-video-editor/env.json. AI_EDITOR_HOME mo
   python3 setup.py matte      download the person-matting model (15 MB) for cards behind the speaker
   python3 setup.py later <step>   save an optional step for later (elevenlabs style modal matte)
   python3 setup.py todo       every optional step not done yet ("finish setup")
+  python3 setup.py age        install age (pinned, sha256 checked) into ~/.ai-video-editor/bin: the GitHub render's
+                              encryption
+  python3 setup.py gh-render-key [OWNER/REPO] [--new]   encrypted GitHub Actions renders: make the age key once
+                              (~/.ai-video-editor/render-key.txt), set the repo's RENDER_KEY secret and RENDER_RECIPIENT
   python3 setup.py install-launcher     put the `ai-editor` command on the PATH (a user folder, no sudo;
                               idempotent). It opens the editor's window with Claude Code behind it.
   python3 setup.py uninstall-launcher   take it off again (and the PATH line, if install added one)
@@ -454,6 +458,11 @@ def doctor():
         OS, "see github.com/cli/cli/blob/trunk/docs/install_linux.md")
     print(f"{'ok ' if gh_ok else '-- '}  {'github cli':<20} " + ("logged in: GitHub Actions renders" if gh_ok else
           f"optional, for free GitHub Actions renders. {'run: gh auth login --web' if gh else 'install: ' + gh_fix}"))
+    if gh_ok:
+        from ai_editor import ghrender
+        rk = ghrender.KEY_FILE.is_file() and bool(ghrender.age_bin())
+        print(f"{'ok ' if rk else '-- '}  {'github render key':<20} " + ("footage is encrypted for GitHub renders" if rk else
+              f"optional, before the first GitHub render: {py_self} \"{here}\" gh-render-key"))
     mo = modal_status()
     print(f"{'ok ' if mo == 'ready' else '-- '}  {'modal':<20} " + {
         "ready": "logged in: cloud renders on Modal",
@@ -500,6 +509,10 @@ KEY_ROWS = [  # name, what it gives, what happens without it
      "Optional: without it transcripts are free and local"),
 ]
 KEY_HELP = {"elevenlabs": "https://elevenlabs.io/app/settings/api-keys"}
+# Where each key is made. Higgsfield (paid generation, the generate skill) is not a setup step, so it is not in
+# KEY_HELP, which also lists what "finish setup" offers.
+KEY_LINKS = {**KEY_HELP, "higgsfield": "https://console.higgsfield.ai"}
+KEY_SHAPE = {"higgsfield": r"[A-Za-z0-9_\-.]{8,}:[A-Za-z0-9_\-.]{8,}"}   # "<key id>:<key secret>"
 LATER = HOME / "later.json"   # steps the user chose to do later; doctor reminds, "finish setup" resumes
 
 
@@ -577,8 +590,8 @@ def set_key(name):
     else:
         key = sys.stdin.readline()
     key = key.strip()
-    if not re.fullmatch(r"[A-Za-z0-9_\-.]{20,}", key):
-        sys.exit(f"Nothing saved: {clip_kind(key)}. Copy only the key from {KEY_HELP[name]}, then pick Copied again.")
+    if not re.fullmatch(KEY_SHAPE.get(name, r"[A-Za-z0-9_\-.]{20,}"), key):
+        sys.exit(f"Nothing saved: {clip_kind(key)}. Copy only the key from {KEY_LINKS[name]}, then pick Copied again.")
     ok, msg = keys.verify(name, key)
     if not ok and not msg.startswith("no connection"):
         sys.exit(f"Not saved: {msg}")
@@ -1152,6 +1165,110 @@ def step_matte(force=False):
     return "installed" if fresh or force else "up to date"
 
 
+def step_age(force=False, fetch=None):
+    """age, the file encryption the GitHub render uses: the pinned release (ghrender.AGE_PINS), sha256 checked,
+    into $AI_EDITOR_HOME/bin. Never the user's PATH."""
+    import tarfile
+    import zipfile
+    from ai_editor import ghrender
+    dest = HOME / "bin"
+    exe = ghrender.EXE
+    if not force and (dest / f"age{exe}").is_file() and (dest / f"age-keygen{exe}").is_file():
+        return "up to date"
+    pin = ghrender.AGE_PINS.get((OS, platform.machine()))
+    if not pin:
+        sys.exit(f"No pinned age build for {OS} {platform.machine()}: install age yourself (github.com/FiloSottile/age).")
+    asset, sha = pin
+    url = f"https://github.com/FiloSottile/age/releases/download/{ghrender.AGE_VERSION}/age-{ghrender.AGE_VERSION}-{asset}"
+    dest.mkdir(parents=True, exist_ok=True)
+    arc = dest / f".age-download-{asset}"
+    try:
+        (fetch or net.retrieve)(url, arc)
+        if file_sha(arc) != sha:
+            sys.exit(f"age download did not match its sha256 ({asset}): nothing installed.")
+        names = {f"age/age{exe}": f"age{exe}", f"age/age-keygen{exe}": f"age-keygen{exe}"}
+        if asset.endswith(".zip"):
+            with zipfile.ZipFile(arc) as z:
+                for src, out in names.items():
+                    (dest / out).write_bytes(z.read(src))
+        else:
+            with tarfile.open(arc) as t:
+                for src, out in names.items():
+                    (dest / out).write_bytes(t.extractfile(src).read())
+        for out in names.values():
+            os.chmod(dest / out, 0o755)
+    finally:
+        arc.unlink(missing_ok=True)
+    print(f"age {ghrender.AGE_VERSION} installed in {dest}")
+    return "installed"
+
+
+def gh_render_key(repo=None, run_cmd=None, new=False):
+    """The key for encrypted GitHub renders: an age identity at $AI_EDITOR_HOME/render-key.txt (0600, made once),
+    its private half as the repo's RENDER_KEY secret (sent on stdin, never printed or put on a command line), its
+    public half as the RENDER_RECIPIENT variable."""
+    from ai_editor import ghrender
+    run_cmd = run_cmd or (lambda cmd, inp=None: subprocess.run(cmd, input=inp, capture_output=True, text=True))
+    step_age()
+    repo = repo or ghrender.repo_name()
+    key = ghrender.KEY_FILE
+    if new or not key.is_file():
+        key.unlink(missing_ok=True)
+        key.parent.mkdir(parents=True, exist_ok=True)
+        r = run_cmd([ghrender.age_bin("age-keygen"), "-o", str(key)])
+        if r.returncode:
+            sys.exit(f"age-keygen failed: {r.stderr.strip()}")
+    try:
+        os.chmod(key, 0o600)
+    except OSError:
+        pass
+    rcpt = ghrender.recipient(key)
+    r = run_cmd(["gh", "secret", "set", "RENDER_KEY", "-R", repo], key.read_text(encoding="utf-8"))
+    if r.returncode:
+        sys.exit(f"Could not set the RENDER_KEY secret on {repo}: {r.stderr.strip()} (gh auth login --web, repo scope)")
+    r = run_cmd(["gh", "variable", "set", "RENDER_RECIPIENT", "-R", repo, "--body", rcpt])
+    if r.returncode:
+        sys.exit(f"Could not set the RENDER_RECIPIENT variable on {repo}: {r.stderr.strip()}")
+    print(f"GitHub renders ready on {repo}: footage is encrypted to {rcpt[:16]}..., the key stays in {key}")
+    return 0
+
+
+def demo_key_shapes():
+    assert re.fullmatch(KEY_SHAPE["higgsfield"], "abcd1234-ef56:SecretValue_99") and KEY_LINKS["higgsfield"].startswith("https://")
+    assert not re.fullmatch(KEY_SHAPE["higgsfield"], "no-colon-in-this-key-at-all") and "higgsfield" not in STEPS
+
+
+def demo_gh_render():
+    """age's pins cover every OS this runs on; the render key reaches GitHub on stdin only."""
+    import tempfile
+    from ai_editor import ghrender
+    global step_age
+    assert {("Linux", "x86_64"), ("Darwin", "arm64"), ("Windows", "AMD64")} <= set(ghrender.AGE_PINS)
+    with tempfile.TemporaryDirectory() as d:
+        keep = ghrender.KEY_FILE, ghrender.age_bin, ghrender.recipient, step_age
+        calls = []
+        try:
+            ghrender.KEY_FILE = Path(d) / "render-key.txt"
+            ghrender.age_bin = lambda name="age": name
+            ghrender.recipient = lambda key, keygen=None: "age1example"
+            step_age = lambda force=False: "up to date"
+
+            def fake(cmd, inp=None):
+                calls.append((cmd, inp))
+                if cmd[0] == "age-keygen":
+                    Path(cmd[2]).write_text("AGE-SECRET-KEY-1DEMO\n", encoding="utf-8")
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            assert gh_render_key("me/r", fake) == 0
+            sec = next(c for c in calls if c[0][:3] == ["gh", "secret", "set"])
+            assert sec[1] == "AGE-SECRET-KEY-1DEMO\n" and not any("AGE-SECRET" in a for c in calls for a in c[0]), calls
+            assert ["gh", "variable", "set", "RENDER_RECIPIENT", "-R", "me/r", "--body", "age1example"] in [c[0] for c in calls]
+            calls.clear()
+            gh_render_key("me/r", fake)   # a second run keeps the key and sets the secret again
+            assert not any(c[0][0] == "age-keygen" for c in calls)
+        finally:
+            ghrender.KEY_FILE, ghrender.age_bin, ghrender.recipient, step_age = keep
+
+
 LAUNCHER = EDITOR / "lib" / "ai_editor" / "launcher.py"
 RC_LINE = 'export PATH="$HOME/.local/bin:$PATH"  # added by ai-editor setup.py install-launcher'
 from ai_editor.launcher import MARK, launcher_text  # noqa: E402  (home.py refreshes the installed file with it too)
@@ -1260,6 +1377,8 @@ def demo_launcher():
 
 
 def demo():
+    demo_gh_render()
+    demo_key_shapes()
     import contextlib
     import io
     out = io.StringIO()
@@ -1458,8 +1577,11 @@ def demo_install_all():
         "python packages", "transcription model", "renderer", "motion clips", "warm-up", "cutout model"], INSTALL_STEPS
     assert set(motion_pins()) == {"hyperframes", "gsap"} and all(re.match(r"^\d+\.\d+\.\d+$", v) for v in motion_pins().values())
     assert dict((x[0], x[4]) for x in INSTALL_STEPS)["warm-up"] == "renderer"
-    global quiet
+    global quiet, ENV, REMOTION_HOME
     real_quiet, real_fetch = quiet, models.fetch
+    # step_warm reads env.json and the renderer's cache: a temporary home, never this computer's real install
+    real_env, real_remotion, iso = ENV, REMOTION_HOME, tempfile.mkdtemp(prefix="ave-demo-home-")
+    ENV, REMOTION_HOME = Path(iso) / "env.json", Path(iso) / "remotion"
     try:
         def no_renderer(*a, **k):
             sys.exit("ERROR: drawing a test frame failed (exit 1); its output is above.")
@@ -1481,6 +1603,8 @@ def demo_install_all():
                 models.DIR = keep_dir
     finally:
         quiet, models.fetch = real_quiet, real_fetch
+        ENV, REMOTION_HOME = real_env, real_remotion
+        shutil.rmtree(iso, ignore_errors=True)
 
 
 if __name__ == "__main__":
@@ -1488,7 +1612,8 @@ if __name__ == "__main__":
             "motion": step_motion, "bootstrap": bootstrap, "repair": repair, "awskey": save_aws_key,
             "lambda": check_lambda, "modal": connect_modal, "modal-connect": connect_modal, "modal-check": connect_modal, "modal-test": test_modal, "matte": step_matte, "warm": step_warm,
             "demo": demo, "keys": test_keys, "certs": step_certs, "todo": todo, "crisper": install_crisper,
-            "install-launcher": install_launcher, "uninstall-launcher": uninstall_launcher}
+            "install-launcher": install_launcher, "uninstall-launcher": uninstall_launcher, "age": step_age,
+            "gh-render-key": gh_render_key}
     if sys.argv[1:] == ["doctor", "--quiet"]:
         sys.exit(doctor_quiet())
     if sys.argv[1:2] == ["install-all"] and set(sys.argv[2:]) <= {"--report"}:
@@ -1497,6 +1622,9 @@ if __name__ == "__main__":
         sys.exit(bootstrap(matte=True))
     if len(sys.argv) == 3 and sys.argv[1] == "later":
         sys.exit(later(sys.argv[2]))
+    if sys.argv[1:2] == ["gh-render-key"] and len(sys.argv) <= 4:
+        rest = sys.argv[2:]
+        sys.exit(gh_render_key(next((x for x in rest if x != "--new"), None), new="--new" in rest))
     if len(sys.argv) == 3 and sys.argv[1] == "setkey":
         sys.exit(set_key(sys.argv[2]))
     if len(sys.argv) != 2 or sys.argv[1] not in cmds:

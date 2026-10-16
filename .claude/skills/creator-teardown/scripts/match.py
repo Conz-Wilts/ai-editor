@@ -28,8 +28,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-SAFE = (5.6, 13.1, 13.0, 25.0)   # 9:16 left, top, right, bottom margins in % (TikTok and Reels UI); ai-editor plan.py's SAFE
-SAFE_WIDE = (3, 5, 3, 10)
+# 9:16 and 16:9 left, top, right, bottom margins in % (the apps' UI): the editor's formats.json "vertical" and
+# "youtube" zones (plan.py's SAFE), with the same numbers here when this skill runs without the editor's lib.
+try:
+    sys.path.insert(0, str(HERE.parents[2] / "lib"))
+    from ai_editor import formats as _fmts
+    SAFE, SAFE_WIDE = _fmts.safe_pct("vertical"), _fmts.safe_pct("youtube")
+except (ImportError, OSError, KeyError):
+    SAFE, SAFE_WIDE = (5.6, 13.1, 13.0, 25.0), (3, 5, 3, 10)
 
 
 def load(p):

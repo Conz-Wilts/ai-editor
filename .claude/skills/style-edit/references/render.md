@@ -107,29 +107,33 @@ about as much: 53 dB median, 40.7 dB worst).
 
 ## GitHub Actions
 
-GitHub Actions, three steps. The repo name is the user's choice (`video-<name>` is a fine default):
+Free, no minute limit: the render runs in this editor's own public repo (`gh` logged in, the repo is this
+checkout's `origin`; `--repo OWNER/NAME` or `AI_EDITOR_RENDER_REPO` picks another). The footage is encrypted
+the whole way, so a public repo shows nothing. Once per computer, after the user says yes:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/edit.py" render edits/<name> --github               # package
-python3 "${CLAUDE_SKILL_DIR}/scripts/edit.py" github-push edits/<name> --repo <repo>      # after the user says yes
-python3 "${CLAUDE_SKILL_DIR}/scripts/edit.py" github-fetch edits/<name> --repo <repo>    # waits, downloads
+python3 "${CLAUDE_SKILL_DIR}/../setup/scripts/setup.py" gh-render-key     # age key, RENDER_KEY secret, RENDER_RECIPIENT
+python3 "${CLAUDE_SKILL_DIR}/scripts/edit.py" render edits/<name> --github   # start, wait, download, decrypt, clean up
 ```
 
-`render --github` writes `edits/<name>/github-render/` (renderer source, plan, workflow; no footage)
-and `edits/<name>/github-render-media.zip` (the footage; over 1.9 GB it is split into
-`github-render-media.zip.part-00`, `-01`, ... because a release file holds 2 GB). `github-push` exits 1
-with `gh auth login --web` when they are not logged in: they run that in their own terminal. It
-refuses a public repo, creates the private one, commits, uploads the media to the `media` release
-(deleting media files left from an earlier push) and starts the `render` workflow. The workflow
-renders in parallel: a `plan` job splits the video into chunks of about 2 minutes (at most 20), one
-`render` job per chunk renders its frames, and a `join` job puts them back together, so a long take
-stays under GitHub's 6-hour job limit. Re-run `github-push` after a new plan: it pushes the
-changes, replaces the media and starts a new run. `github-fetch` waits for the latest run and
-writes `edits/<name>/render-github.mp4`. With `cloud_cleanup` true in the profile (the default) it
-then deletes the `media` release (the footage) and the run's artifacts; the rendered video artifact
-is kept 1 day either way. Git pushes use the `gh` login through the render repo's own
-`.git/config` (`credential.helper`, set with `git config --local`); the user's global git config
-is never changed (no `gh auth setup-git`).
+`render --github` bundles the renderer with the footage (`render.mjs bundle`), puts it in one tar with
+the plan, encrypts it with age to the repo's recipient and uploads it as a **draft** release
+`render-<id>` (`<id>` is random; parts of 1.9 GB when bigger, since a release file holds 2 GB). Then it
+runs the `render` workflow (`.github/workflows/render.yml`) with the id, frames, fps and format. The run is
+named `render <id>`, so it never picks up another render. The workflow decrypts on the runner with the
+`RENDER_KEY` secret, renders chunks of about 2 minutes on up to 20 runners at once (`.github/scripts/chunks.py`),
+joins them (`.github/scripts/join.py`, the same join the laptop and Modal use) and uploads the video
+encrypted as the artifact `render-<id>` (1 day). Here it downloads, decrypts with
+`~/.ai-video-editor/render-key.txt` into `edits/<name>/render-github.mp4`, then deletes the draft
+release and the run's artifacts (unless the profile says `"cloud_cleanup": false`). `--purge-logs` also
+deletes the run and its log. The two halves exist too: `edit.py github-push edits/<name>` (start only)
+and `edit.py github-fetch edits/<name>` (wait and download), for the render-watcher agent.
+
+What a stranger can see on the public repo: that a run named `render <id>` happened, its timing, and
+the encrypted files while they exist. Never a file name, a frame or a word of the plan. Only accounts
+with write access can start the workflow, and pull requests from forks never get the secret.
+GitHub's terms ask Actions to serve the repo's own software; rendering with this repo's renderer is
+that, but the laptop and Modal stay as the plain alternatives.
 
 ## Lambda
 

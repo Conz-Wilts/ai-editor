@@ -5,6 +5,7 @@
 * [clips](clips/) - Turns one long video or podcast (a local file or a YouTube link) into the best 3-5 short vertical clips, each cut and styled in the user's profile style.
 * [creator-teardown](creator-teardown/) - Reverse-engineers a short-form creator's video format from their real numbers.
 * [cut](cut/) - Cuts raw talking-head footage into a clean jump cut.
+* [generate](generate/) - Generates new footage with Higgsfield and puts it on the edit's timeline.
 * [improve](improve/) - For the editor's maintainers.
 * [logo-pack](logo-pack/) - Builds clean brand-colour logos for every company, app or tool named in a video.
 * [motion](motion/) - Builds bespoke motion graphics for an edit, one animated clip per beat (HyperFrames + GSAP), each designed for its line and landing on the spoken word, then lays them on the footage through the style-edit render.

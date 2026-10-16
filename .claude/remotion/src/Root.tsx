@@ -5,6 +5,7 @@ import { resolveLook, useFonts } from "./look";
 import { SplitText, pickMotion, useTl } from "./motion";
 import { footageX } from "./Scene";
 import { ProductVideo, ProductPlan, productMeta } from "./product/ProductVideo";
+import { SafeZone } from "./formats";
 
 // Real values come from plan.json via --props; these only let the studio open.
 const empty: Plan = {
@@ -72,11 +73,19 @@ const ProofInner: React.FC<{ plugin: string; family: string }> = ({ plugin, fami
   );
 };
 
+// The edit, with its format's safe zone drawn on top when the plan asks (render.mjs stills --safe): a check, never a final.
+const StyleEditFrame: React.FC<Plan & { format?: string; showSafe?: string | boolean }> = (p) => (
+  <AbsoluteFill>
+    <StyleEdit {...p} />
+    {p.showSafe ? <SafeZone format={typeof p.showSafe === "string" ? p.showSafe : p.format} /> : null}
+  </AbsoluteFill>
+);
+
 export const Root: React.FC = () => (
   <>
     <Composition
       id="StyleEdit"
-      component={StyleEdit}
+      component={StyleEditFrame}
       defaultProps={empty}
       calculateMetadata={calculateMetadata}
       width={1080}

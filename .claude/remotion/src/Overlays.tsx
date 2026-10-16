@@ -10,6 +10,7 @@ import { CARD_LEAD_S, Motion, OVERLAY_LEAD_S, cardLife, dropIn, exitUp, fitIn, f
 import { Look } from "./look";
 import { Capture, Mark } from "./Capture";
 import type { TP } from "./Templates";
+import { VERTICAL_SAFE_TOP } from "./formats";
 
 const src_ = (s?: string) => (!s ? undefined : /^(https?:|data:)/.test(s) ? s : staticFile(s));
 const fill: React.CSSProperties = { position: "absolute", inset: 0 };
@@ -361,7 +362,7 @@ const LogoCluster: React.FC<TP> = ({ p, w, h, m, dur }) => {
       : Math.min(w * 0.84 - S / 2, Math.max(S * 0.6, cx + Math.cos(a) * R * 1.15)); // clear of the frame edge and the app rail
     // in the band the big logos stay above the head: never lower than just over its top
     const y = band ? Math.min(cy + Math.sin(a) * R * 1.05, (hy / 100) * h - S * 0.55) : cy + Math.sin(a) * R * 1.05;
-    return [x, Math.max(h * (h > w ? 0.131 : 0.12) + S / 2, y), (r() - 0.5) * 16, r() * 6.28];   // vertical: the reels safe zone's top (plan.py SAFE)
+    return [x, Math.max(h * (h > w ? VERTICAL_SAFE_TOP : 0.12) + S / 2, y), (r() - 0.5) * 16, r() * 6.28];   // vertical: the reels safe zone's top (formats.json vertical, plan.py SAFE)
   });
   const { U } = useFrame();
   const ref = useTl((timeline, q) => {

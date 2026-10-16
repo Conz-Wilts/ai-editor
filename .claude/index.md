@@ -14,4 +14,4 @@ each folder's index.md lists what is inside. Changes: [log.md](log.md).
 # Folders
 
 * [agents](agents/) - 10 documents
-* [skills](skills/) - 79 documents
+* [skills](skills/) - 81 documents

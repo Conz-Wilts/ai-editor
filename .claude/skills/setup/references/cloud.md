@@ -56,4 +56,9 @@ Only when the user picks **Other: GitHub Actions** at render time. Doctor shows 
 3. In their own terminal, not this chat: `gh auth login --web`. Pick GitHub.com and HTTPS, and say
    yes to logging in git with it. It opens the browser. Check: `gh auth status` says logged in.
 
-The footage goes in a private repo in their account. Only they can see it.
+4. The render key, once: `python3 <setup>/scripts/setup.py gh-render-key`. It installs age (pinned,
+   sha256 checked) into `~/.ai-video-editor/bin`, makes the key `~/.ai-video-editor/render-key.txt`, and sets
+   the repo's `RENDER_KEY` secret (sent on stdin, never shown) and `RENDER_RECIPIENT` variable.
+
+Renders run in this editor's own public repo (free, no minute limit). The footage, the plan and the video
+are encrypted before they leave the computer and only decrypted on the runner, so nobody else can see them.
