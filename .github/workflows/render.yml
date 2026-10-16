@@ -116,7 +116,7 @@ jobs:
         run: |
           age -r "$RENDER_RECIPIENT" -o "out/chunk-$I.mkv.age" "out/chunk-$I.mkv"
           rm -rf "out/chunk-$I.mkv" work render.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: chunk-${{ inputs.render_id }}-${{ matrix.chunk.i }}
           path: out/chunk-${{ matrix.chunk.i }}.mkv.age
@@ -133,7 +133,7 @@ jobs:
           sparse-checkout: .github
       - run: bash .github/scripts/install-age.sh
       - run: command -v ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: chunk-${{ inputs.render_id }}-*
           path: enc
@@ -155,7 +155,7 @@ jobs:
           python3 .github/scripts/join.py
           age -r "$RENDER_RECIPIENT" -o out/render.mp4.age out/render.mp4
           rm -rf chunks enc out/render.mp4 audio.raw list.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: render-${{ inputs.render_id }}
           path: out/render.mp4.age
